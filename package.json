@@ -1,4 +1,8 @@
 {
+  "name": "educational_web",
+  "version": "1.0.0",
+  "description": "Educational platform",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
