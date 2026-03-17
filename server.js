@@ -26,6 +26,12 @@ const redeemLimiter = rateLimit({
     message: { error: 'Too many attempts from this IP, please try again after 15 minutes.' }
 });
 
+// Ensure base directories exist to prevent crashes on fresh deployment
+const dbDir = path.join(__dirname, 'db');
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
+
 // Create video directories if they don't exist
 ['grade1', 'grade2', 'grade3'].forEach(grade => {
     const dir = path.join(__dirname, 'videos', grade);
@@ -412,5 +418,5 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log("Server running on port " + PORT);
 });
