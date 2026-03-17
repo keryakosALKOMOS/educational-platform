@@ -120,6 +120,37 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
     res.json({ message: 'Logged out successfully' });
 });
 
+app.put('/api/auth/profile', authenticateToken, async (req, res) => {
+    const { name, email, password, class_time } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+
+    if (password && password.trim() !== '') {
+        try {
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(password, salt);
+            db.run(
+                `UPDATE users SET name = ?, email = ?, password = ?, class_time = ? WHERE id = ?`,
+                [name, email, hash, class_time || null, req.user.id],
+                function(err) {
+                    if (err) return res.status(400).json({ error: 'Email already in use or database error' });
+                    res.json({ message: 'Profile updated successfully', user: { id: req.user.id, name, email, role: req.user.role } });
+                }
+            );
+        } catch (err) {
+            res.status(500).json({ error: 'Server error' });
+        }
+    } else {
+        db.run(
+            `UPDATE users SET name = ?, email = ?, class_time = ? WHERE id = ?`,
+            [name, email, class_time || null, req.user.id],
+            function(err) {
+                if (err) return res.status(400).json({ error: 'Email already in use or database error' });
+                res.json({ message: 'Profile updated successfully', user: { id: req.user.id, name, email, role: req.user.role } });
+            }
+        );
+    }
+});
+
 // =======================
 // ADMIN STUDENTS APIs
 // =======================

@@ -22,6 +22,7 @@
                 <a href="grade.html?level=grade3" data-i18n="btn_grade3" class="auth-student">Grade 3</a>
                 <a href="dashboard.html" data-i18n="nav_dashboard" class="auth-user auth-student">Dashboard</a>
                 <a href="admin.html" data-i18n="nav_admin" class="auth-user auth-admin">Admin</a>
+                <a href="settings.html" data-i18n="nav_settings" class="auth-user">⚙ Settings</a>
                 
                 <!-- Auth status links -->
                 <a href="login.html" data-i18n="nav_login" class="btn btn-secondary auth-guest">Login</a>
@@ -38,21 +39,21 @@
 
     <!-- Hero Section -->
     <header class="hero container">
-        <h1 data-i18n="hero_title">Unlock Your Learning Journey</h1>
-        <p data-i18n="hero_subtitle">Premium educational video content tailored for all grades. Earn coins, unlock knowledge, and track your progress.</p>
+        <h1 data-i18n="hero_title" class="fade-in">Unlock Your Learning Journey</h1>
+        <p data-i18n="hero_subtitle" class="fade-in stagger-1">Premium educational video content tailored for all grades. Earn coins, unlock knowledge, and track your progress.</p>
         
-        <div class="auth-guest">
+        <div class="auth-guest fade-in stagger-2">
             <a href="register.html" class="btn btn-primary btn-lg" data-i18n="btn_start">Get Started</a>
         </div>
         
-        <div class="flex flex-wrap justify-center gap-4 mt-8 auth-student auth-user" style="padding-bottom: 2rem;">
-            <a href="grade.html?level=grade1" class="card text-center" style="min-width: 200px;">
+        <div class="flex flex-wrap justify-center gap-4 mt-8 auth-student auth-user fade-in stagger-3" style="padding-bottom: 2rem;">
+            <a href="grade.html?level=grade1" class="card text-center slide-up stagger-1" style="min-width: 200px;">
                 <h3 data-i18n="btn_grade1">Grade 1</h3>
             </a>
-            <a href="grade.html?level=grade2" class="card text-center" style="min-width: 200px;">
+            <a href="grade.html?level=grade2" class="card text-center slide-up stagger-2" style="min-width: 200px;">
                 <h3 data-i18n="btn_grade2">Grade 2</h3>
             </a>
-            <a href="grade.html?level=grade3" class="card text-center" style="min-width: 200px;">
+            <a href="grade.html?level=grade3" class="card text-center slide-up stagger-3" style="min-width: 200px;">
                 <h3 data-i18n="btn_grade3">Grade 3</h3>
             </a>
         </div>
@@ -61,8 +62,8 @@
     <!-- Developer Section -->
     <section class="dev-section">
         <div class="container">
-            <h2 class="text-center mb-4" data-i18n="dev_title" style="margin-bottom: 3rem;">Platform Developer</h2>
-            <div class="dev-card">
+            <h2 class="text-center mb-4 fade-in" data-i18n="dev_title" style="margin-bottom: 3rem;">Platform Developer</h2>
+            <div class="dev-card scale-in stagger-1">
                 <img src="/assets/developer.jpg" alt="Developer" class="dev-avatar" onerror="this.src='https://ui-avatars.com/api/?name=KA&background=4F46E5&color=fff&size=150'">
                 <h3 class="dev-name" data-i18n="dev_name">Keryakos Alkis</h3>
                 <div class="dev-role" data-i18n="dev_role">Full Stack Developer & DevOps Engineer</div>
@@ -102,6 +103,7 @@
     </section>
 
     <script src="js/i18n.js"></script>
+    <script src="js/bg-animation.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

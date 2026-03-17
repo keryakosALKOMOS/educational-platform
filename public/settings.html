@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Settings</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-auth="guest">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform
+            </a>
+            <div class="nav-links">
+                <a href="index.html" data-i18n="nav_home">Home</a>
+                <a href="dashboard.html" data-i18n="nav_dashboard" class="auth-user auth-student">Dashboard</a>
+                <a href="admin.html" data-i18n="nav_admin" class="auth-user auth-admin">Admin</a>
+                <a href="settings.html" data-i18n="nav_settings" class="auth-user" style="color: var(--primary);">⚙ Settings</a>
+                <a href="#" data-i18n="nav_logout" class="btn btn-secondary logout-btn auth-user">Logout</a>
+                <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; height: auto;">
+                    <option value="en">EN</option>
+                    <option value="ar">AR</option>
+                </select>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="settings-layout">
+            <!-- Sidebar Navigation -->
+            <aside>
+                <div class="settings-nav">
+                    <button class="settings-nav-item active" data-panel="profile" id="nav-profile">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <span data-i18n="settings_profile">Profile</span>
+                    </button>
+                    <button class="settings-nav-item" data-panel="appearance" id="nav-appearance">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <span data-i18n="settings_appearance">Appearance</span>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Panels -->
+            <main>
+                <!-- Profile Panel -->
+                <div class="settings-panel active card" id="panel-profile">
+                    <h2 class="settings-section-title">Edit Profile</h2>
+                    <p class="settings-section-subtitle">Update your personal information and password.</p>
+
+                    <form id="profileForm">
+                        <div class="form-group">
+                            <label class="form-label" for="pName">Full Name</label>
+                            <input type="text" id="pName" class="form-control" placeholder="Your full name" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="pEmail">Email Address</label>
+                            <input type="email" id="pEmail" class="form-control" placeholder="your@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="pClassTime">Class Time (Optional)</label>
+                            <input type="text" id="pClassTime" class="form-control" placeholder="e.g. Mon/Wed 10am">
+                        </div>
+                        <hr style="border-color: var(--border); margin: 1.5rem 0;">
+                        <p class="form-label" style="margin-bottom: 1rem;">Change Password <span style="font-weight: 400; color: var(--text-muted);">(leave blank to keep current)</span></p>
+                        <div class="form-group">
+                            <label class="form-label" for="pPassword">New Password</label>
+                            <input type="password" id="pPassword" class="form-control" placeholder="Min 6 characters" minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="pPasswordConfirm">Confirm New Password</label>
+                            <input type="password" id="pPasswordConfirm" class="form-control" placeholder="Repeat new password">
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="saveProfileBtn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            Save Changes
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Appearance Panel -->
+                <div class="settings-panel card" id="panel-appearance">
+                    <h2 class="settings-section-title">Appearance</h2>
+                    <p class="settings-section-subtitle">Customize how the platform looks for you.</p>
+
+                    <!-- Theme -->
+                    <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-main);">Theme Mode</h3>
+                    <div class="theme-toggle-grid" style="margin-bottom: 2.5rem;">
+                        <div class="theme-option" id="theme-light" onclick="selectTheme('light')">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                            <strong>Light</strong>
+                            <p>Clean and bright</p>
+                        </div>
+                        <div class="theme-option" id="theme-dark" onclick="selectTheme('dark')">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                            <strong>Dark</strong>
+                            <p>Easy on the eyes</p>
+                        </div>
+                    </div>
+
+                    <!-- Color Palette -->
+                    <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-main);">Color Palette</h3>
+                    <div class="palette-grid" id="paletteGrid">
+                        <div class="palette-swatch" data-palette="indigo" onclick="selectPalette('indigo')">
+                            <div class="palette-swatch-circle" style="background: linear-gradient(135deg, #4F46E5, #ec4899);"></div>
+                            <span>Indigo</span>
+                        </div>
+                        <div class="palette-swatch" data-palette="rose" onclick="selectPalette('rose')">
+                            <div class="palette-swatch-circle" style="background: linear-gradient(135deg, #e11d48, #f97316);"></div>
+                            <span>Rose</span>
+                        </div>
+                        <div class="palette-swatch" data-palette="emerald" onclick="selectPalette('emerald')">
+                            <div class="palette-swatch-circle" style="background: linear-gradient(135deg, #059669, #0ea5e9);"></div>
+                            <span>Emerald</span>
+                        </div>
+                        <div class="palette-swatch" data-palette="amber" onclick="selectPalette('amber')">
+                            <div class="palette-swatch-circle" style="background: linear-gradient(135deg, #d97706, #7c3aed);"></div>
+                            <span>Amber</span>
+                        </div>
+                        <div class="palette-swatch" data-palette="sky" onclick="selectPalette('sky')">
+                            <div class="palette-swatch-circle" style="background: linear-gradient(135deg, #0284c7, #db2777);"></div>
+                            <span>Sky</span>
+                        </div>
+                        <div class="palette-swatch" data-palette="violet" onclick="selectPalette('violet')">
+                            <div class="palette-swatch-circle" style="background: linear-gradient(135deg, #7c3aed, #ec4899);"></div>
+                            <span>Violet</span>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="js/i18n.js"></script>
+    <script src="js/bg-animation.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Protect route — students and admins can access settings
+        if (!window.app.token) {
+            window.location.href = '/login.html';
+        }
+
+        // ---- Sidebar nav switching ----
+        document.querySelectorAll('.settings-nav-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
+            });
+        });
+
+        // ---- Prefill profile form ----
+        async function loadProfile() {
+            try {
+                const { user } = await window.app.apiCall('/auth/me');
+                document.getElementById('pName').value      = user.name      || '';
+                document.getElementById('pEmail').value     = user.email     || '';
+                document.getElementById('pClassTime').value = user.class_time || '';
+            } catch (err) {
+                window.showNotification('Failed to load profile', 'error');
+            }
+        }
+        loadProfile();
+
+        // ---- Save profile ----
+        document.getElementById('profileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name      = document.getElementById('pName').value.trim();
+            const email     = document.getElementById('pEmail').value.trim();
+            const classTime = document.getElementById('pClassTime').value.trim();
+            const password  = document.getElementById('pPassword').value;
+            const confirm   = document.getElementById('pPasswordConfirm').value;
+
+            if (password && password !== confirm) {
+                window.showNotification('Passwords do not match', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('saveProfileBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg> Saving…';
+
+            try {
+                const payload = { name, email, class_time: classTime };
+                if (password.trim()) payload.password = password;
+
+                await window.app.apiCall('/auth/profile', 'PUT', payload);
+
+                // Refresh local user cache
+                const updated = await window.app.apiCall('/auth/me');
+                const freshUser = { ...window.app.user, name: updated.user.name, email: updated.user.email };
+                localStorage.setItem('user', JSON.stringify(freshUser));
+                window.app.user = freshUser;
+                window.app.updateAuthUI();
+
+                document.getElementById('pPassword').value        = '';
+                document.getElementById('pPasswordConfirm').value = '';
+                window.showNotification('Profile updated successfully!', 'success');
+            } catch (err) {
+                window.showNotification(err.message || 'Failed to update profile', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Changes';
+            }
+        });
+
+        // ---- Theme ----
+        function selectTheme(theme) {
+            window.app.setTheme(theme);
+            document.getElementById('theme-light').classList.toggle('active', theme === 'light');
+            document.getElementById('theme-dark').classList.toggle('active',  theme === 'dark');
+            window.showNotification(`Switched to ${theme} mode`, 'success');
+        }
+
+        // ---- Palette ----
+        function selectPalette(palette) {
+            window.app.setPalette(palette);
+            document.querySelectorAll('.palette-swatch').forEach(s => {
+                s.classList.toggle('active', s.dataset.palette === palette);
+            });
+            window.showNotification(`Color palette changed to ${palette.charAt(0).toUpperCase() + palette.slice(1)}`, 'success');
+        }
+
+        // ---- Initialize current selections ----
+        const currentTheme   = window.app.getTheme();
+        const currentPalette = window.app.getPalette();
+        document.getElementById(`theme-${currentTheme}`).classList.add('active');
+        document.querySelectorAll('.palette-swatch').forEach(s => {
+            if (s.dataset.palette === currentPalette) s.classList.add('active');
+        });
+    </script>
+</body>
+</html>
