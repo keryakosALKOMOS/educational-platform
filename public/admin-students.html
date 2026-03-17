@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Manage Students</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        [dir="rtl"] th, [dir="rtl"] td {
+            text-align: right;
+        }
+        th {
+            background: var(--surface-hover);
+        }
+        .action-btns {
+            display: flex;
+            gap: 0.5rem;
+        }
+        [dir="rtl"] .action-btns {
+            justify-content: flex-end;
+        }
+        /* Modal Fixes */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: var(--radius);
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body data-auth="guest">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform Admin
+            </a>
+            <div class="nav-links">
+                <a href="admin.html">Admin Panel</a>
+                <a href="#" data-i18n="nav_logout" class="btn btn-secondary logout-btn auth-user">Logout</a>
+                <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; height: auto;">
+                    <option value="en">EN</option>
+                    <option value="ar">AR</option>
+                </select>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2>Manage Students</h2>
+            <button class="btn btn-primary" onclick="openModal()">Add New Student</button>
+        </div>
+
+        <div class="flex gap-4 mb-4 p-4 card" style="align-items: center;">
+            <strong style="white-space: nowrap;">Filter Schedule:</strong>
+            <select id="filterDay" class="form-control" onchange="renderStudents()">
+                <option value="">All Days</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
+            </select>
+            <select id="filterHour" class="form-control" onchange="renderStudents()">
+                <option value="">All Times</option>
+                <option value="08:00 AM">08:00 AM</option>
+                <option value="09:00 AM">09:00 AM</option>
+                <option value="10:00 AM">10:00 AM</option>
+                <option value="11:00 AM">11:00 AM</option>
+                <option value="12:00 PM">12:00 PM</option>
+                <option value="01:00 PM">01:00 PM</option>
+                <option value="02:00 PM">02:00 PM</option>
+                <option value="03:00 PM">03:00 PM</option>
+                <option value="04:00 PM">04:00 PM</option>
+                <option value="05:00 PM">05:00 PM</option>
+                <option value="06:00 PM">06:00 PM</option>
+                <option value="07:00 PM">07:00 PM</option>
+                <option value="08:00 PM">08:00 PM</option>
+                <option value="09:00 PM">09:00 PM</option>
+                <option value="10:00 PM">10:00 PM</option>
+            </select>
+        </div>
+
+        <div class="card p-0" style="overflow-x: auto;">
+            <table id="studentsTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Coins</th>
+                        <th>Class Time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="studentsBody">
+                    <!-- Students injected here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Student Modal -->
+    <div id="studentModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle" class="mb-4">Add Student</h3>
+            <form id="studentForm">
+                <input type="hidden" id="studentId">
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" id="sName" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="sEmail" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password <span id="pwdHint" class="text-muted" style="font-size: 0.8rem;"></span></label>
+                    <input type="text" id="sPassword" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Coins Balance</label>
+                    <input type="number" id="sCoins" class="form-control" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Class Day (Optional)</label>
+                    <select id="sClassDay" class="form-control">
+                        <option value="">Select Day</option>
+                        <option value="Monday">Monday</option>
+                        <option value="Tuesday">Tuesday</option>
+                        <option value="Wednesday">Wednesday</option>
+                        <option value="Thursday">Thursday</option>
+                        <option value="Friday">Friday</option>
+                        <option value="Saturday">Saturday</option>
+                        <option value="Sunday">Sunday</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Class Time (Optional)</label>
+                    <select id="sClassHour" class="form-control">
+                        <option value="">Select Time</option>
+                        <option value="08:00 AM">08:00 AM</option>
+                        <option value="09:00 AM">09:00 AM</option>
+                        <option value="10:00 AM">10:00 AM</option>
+                        <option value="11:00 AM">11:00 AM</option>
+                        <option value="12:00 PM">12:00 PM</option>
+                        <option value="01:00 PM">01:00 PM</option>
+                        <option value="02:00 PM">02:00 PM</option>
+                        <option value="03:00 PM">03:00 PM</option>
+                        <option value="04:00 PM">04:00 PM</option>
+                        <option value="05:00 PM">05:00 PM</option>
+                        <option value="06:00 PM">06:00 PM</option>
+                        <option value="07:00 PM">07:00 PM</option>
+                        <option value="08:00 PM">08:00 PM</option>
+                        <option value="09:00 PM">09:00 PM</option>
+                        <option value="10:00 PM">10:00 PM</option>
+                    </select>
+                </div>
+                <div class="flex gap-4 mt-4" style="justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Student</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <h3 class="mb-4" style="color: var(--error);">Delete Student</h3>
+            <p class="mb-4 text-muted">Are you sure you want to completely delete this student? All their open videos and progress will be lost. This cannot be undone.</p>
+            <input type="hidden" id="deleteStudentId">
+            <div class="flex gap-4 mt-4" style="justify-content: center;">
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" style="background: var(--error); border-color: var(--error);" onclick="confirmDelete()">Delete Permanently</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/i18n.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Protect Route
+        if (!window.app.token || window.app.user?.role !== 'admin') {
+            window.location.href = '/login.html';
+        }
+
+        let isEditing = false;
+        let allStudents = [];
+
+        async function loadStudents() {
+            try {
+                const data = await window.app.apiCall('/students');
+                allStudents = data.students;
+                renderStudents();
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        }
+
+        function renderStudents() {
+            const tbody = document.getElementById('studentsBody');
+            tbody.innerHTML = '';
+
+            const fDay = document.getElementById('filterDay').value;
+            const fHour = document.getElementById('filterHour').value;
+
+            const filtered = allStudents.filter(s => {
+                const ct = s.class_time || '';
+                if (fDay && !ct.includes(fDay)) return false;
+                if (fHour && !ct.includes(fHour)) return false;
+                return true;
+            });
+
+            filtered.forEach(s => {
+                const tr = document.createElement('tr');
+                
+                // We need to safely pass strings to onclick, so we escape quotes if needed, 
+                // or just encode to base64 or pass IDs and find from array. 
+                // Passing by finding from array is safer.
+                window[`studentData_${s.id}`] = s;
+
+                tr.innerHTML = `
+                    <td>${s.id}</td>
+                    <td>${escapeHtml(s.name)}</td>
+                    <td>${escapeHtml(s.email)}</td>
+                    <td><strong style="color:var(--warning)">${s.coins}</strong></td>
+                    <td>${escapeHtml(s.class_time || 'Not Set')}</td>
+                    <td class="action-btns">
+                        <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="openModal(${s.id})">Edit</button>
+                        <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; background: var(--error); border-color: var(--error); color: white;" onclick="openDeleteModal(${s.id})">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        function openModal(id = null) {
+            isEditing = !!id;
+            document.getElementById('modalTitle').textContent = isEditing ? 'Edit Student' : 'Add New Student';
+            document.getElementById('pwdHint').textContent = isEditing ? '(Leave blank to keep unchanged)' : '(Required)';
+            
+            if (isEditing) {
+                const s = window[`studentData_${id}`];
+                document.getElementById('studentId').value = s.id;
+                document.getElementById('sName').value = s.name;
+                document.getElementById('sEmail').value = s.email;
+                document.getElementById('sPassword').value = '';
+                document.getElementById('sPassword').required = false;
+                document.getElementById('sCoins').value = s.coins;
+                
+                const ct = s.class_time || '';
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                const matchedDay = days.find(d => ct.includes(d)) || '';
+                let matchedHour = '';
+                Array.from(document.getElementById('sClassHour').options).forEach(opt => {
+                    if (opt.value && ct.includes(opt.value)) matchedHour = opt.value;
+                });
+                
+                document.getElementById('sClassDay').value = matchedDay;
+                document.getElementById('sClassHour').value = matchedHour;
+            } else {
+                document.getElementById('studentForm').reset();
+                document.getElementById('studentId').value = '';
+                document.getElementById('sPassword').required = true;
+                document.getElementById('sCoins').value = 0;
+                document.getElementById('sClassDay').value = '';
+                document.getElementById('sClassHour').value = '';
+            }
+            
+            document.getElementById('studentModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('studentModal').classList.remove('active');
+        }
+
+        document.getElementById('studentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const day = document.getElementById('sClassDay').value;
+            const hour = document.getElementById('sClassHour').value;
+            const class_time = (day && hour) ? `${day} ${hour}` : (day || hour || '');
+
+            const payload = {
+                name: document.getElementById('sName').value,
+                email: document.getElementById('sEmail').value,
+                password: document.getElementById('sPassword').value,
+                coins: document.getElementById('sCoins').value,
+                class_time: class_time
+            };
+
+            const url = isEditing ? `/students/${document.getElementById('studentId').value}` : `/students`;
+            const method = isEditing ? 'PUT' : 'POST';
+
+            try {
+                const data = await window.app.apiCall(url, method, payload);
+                window.showNotification(data.message, 'success');
+                closeModal();
+                loadStudents();
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        });
+
+        function openDeleteModal(id) {
+            document.getElementById('deleteStudentId').value = id;
+            document.getElementById('deleteModal').classList.add('active');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').classList.remove('active');
+            document.getElementById('deleteStudentId').value = '';
+        }
+
+        window.confirmDelete = async () => {
+            const id = document.getElementById('deleteStudentId').value;
+            if (!id) return;
+            try {
+                const data = await window.app.apiCall(`/students/${id}`, 'DELETE');
+                window.showNotification(data.message, 'success');
+                closeDeleteModal();
+                loadStudents();
+            } catch(err) {
+                window.showNotification(err.message, 'error');
+                closeDeleteModal();
+            }
+        };
+
+        // Init
+        loadStudents();
+    </script>
+</body>
+</html>

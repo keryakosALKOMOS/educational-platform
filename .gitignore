@@ -1,0 +1,6 @@
+node_modules/
+.env
+db/*.sqlite
+tmp_clear.js
+test_delete.js
+assetes/

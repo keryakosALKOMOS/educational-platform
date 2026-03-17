@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Admin</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        [dir="rtl"] th, [dir="rtl"] td {
+            text-align: right;
+        }
+        th {
+            background: var(--surface-hover);
+        }
+    </style>
+</head>
+<body data-auth="guest">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform Admin
+            </a>
+            <div class="nav-links">
+                <a href="index.html" data-i18n="nav_home">Home</a>
+                <a href="grade.html?level=grade1" data-i18n="btn_grade1">Grade 1</a>
+                <a href="#" data-i18n="nav_logout" class="btn btn-secondary logout-btn auth-user">Logout</a>
+                <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; height: auto;">
+                    <option value="en">EN</option>
+                    <option value="ar">AR</option>
+                </select>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2 data-i18n="nav_admin">Admin Panel</h2>
+            <div class="flex gap-4">
+                <a href="admin-students.html" class="btn btn-secondary">Manage Students</a>
+                <button id="btnGenerate" class="btn btn-primary" data-i18n="admin_generate">Generate 500 Codes</button>
+                <a href="print-codes.html" target="_blank" class="btn btn-secondary" data-i18n="admin_print">Print Codes</a>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalCodes">0</div>
+                <div class="text-muted" data-i18n="stats_total_codes">Total Codes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="usedCodes">0</div>
+                <div class="text-muted" data-i18n="stats_used_codes">Used Codes</div>
+            </div>
+        </div>
+
+        <div class="card p-0" style="overflow-x: auto;">
+            <table id="codesTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Code</th>
+                        <th>Status</th>
+                        <th>Used By (User ID)</th>
+                        <th>Used At</th>
+                    </tr>
+                </thead>
+                <tbody id="codesBody">
+                    <!-- Codes injected here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="js/i18n.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        if (!window.app.token || window.app.user?.role !== 'admin') {
+            window.location.href = '/login.html';
+        }
+
+        async function loadCodes() {
+            try {
+                const data = await window.app.apiCall('/codes');
+                
+                let usedCount = 0;
+                const tbody = document.getElementById('codesBody');
+                tbody.innerHTML = '';
+                
+                data.codes.forEach(code => {
+                    if (code.is_used) usedCount++;
+                    
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${code.id}</td>
+                        <td style="font-family: monospace; font-weight: bold; letter-spacing: 2px;">${code.code}</td>
+                        <td>
+                            <span style="color: ${code.is_used ? 'var(--error)' : 'var(--success)'}; font-weight: bold;">
+                                ${code.is_used ? 'Used' : 'Available'}
+                            </span>
+                        </td>
+                        <td>${code.used_by || '-'}</td>
+                        <td>${code.used_at ? new Date(code.used_at).toLocaleString() : '-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                document.getElementById('totalCodes').textContent = data.codes.length;
+                document.getElementById('usedCodes').textContent = usedCount;
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        }
+
+        document.getElementById('btnGenerate').addEventListener('click', async () => {
+            try {
+                const data = await window.app.apiCall('/codes/generate', 'POST');
+                window.showNotification(data.message, 'success');
+                loadCodes();
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        });
+
+        loadCodes();
+    </script>
+</body>
+</html>

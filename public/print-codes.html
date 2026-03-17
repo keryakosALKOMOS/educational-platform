@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Print Codes - Educational Platform</title>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4F46E5;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        /* A4 Page Layout */
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .code-box {
+            border: 1px dashed #ccc;
+            padding: 10px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            page-break-inside: avoid;
+        }
+        @media print {
+            body { background: white; padding: 0; }
+            .controls { display: none; }
+            .page { box-shadow: none; width: auto; min-height: auto; margin: 0; padding: 10mm; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button onclick="window.print()">Print Codes (A4)</button>
+        <button onclick="window.close()" style="background: #ef4444; margin-left: 10px;">Close</button>
+    </div>
+
+    <div class="page" id="printPage">
+        <div class="grid" id="codesGrid">
+            Loading...
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        if (!window.app.token || window.app.user?.role !== 'admin') {
+            document.body.innerHTML = '<h1>Access Denied. Admins only.</h1>';
+        } else {
+            loadUnusedCodes();
+        }
+
+        async function loadUnusedCodes() {
+            try {
+                const data = await window.app.apiCall('/codes');
+                const unused = data.codes.filter(c => !c.is_used);
+                
+                const grid = document.getElementById('codesGrid');
+                grid.innerHTML = '';
+                
+                if (unused.length === 0) {
+                    grid.innerHTML = '<div style="grid-column: span 4; text-align: center;">No unused codes available.</div>';
+                    return;
+                }
+
+                // Append up to 500
+                unused.slice(0, 500).forEach(code => {
+                    const div = document.createElement('div');
+                    div.className = 'code-box';
+                    div.textContent = code.code;
+                    grid.appendChild(div);
+                });
+            } catch (err) {
+                alert('Error loading codes: ' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>

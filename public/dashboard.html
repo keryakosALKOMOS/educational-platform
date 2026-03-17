@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-auth="guest">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform
+            </a>
+            <div class="nav-links">
+                <a href="index.html" data-i18n="nav_home">Home</a>
+                <a href="grade.html?level=grade1" data-i18n="btn_grade1">Grade 1</a>
+                <a href="grade.html?level=grade2" data-i18n="btn_grade2">Grade 2</a>
+                <a href="grade.html?level=grade3" data-i18n="btn_grade3">Grade 3</a>
+                <a href="#" data-i18n="nav_logout" class="btn btn-secondary logout-btn auth-user">Logout</a>
+                <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; height: auto;">
+                    <option value="en">EN</option>
+                    <option value="ar">AR</option>
+                </select>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2><span class="user-name-display"></span>'s <span data-i18n="nav_dashboard">Dashboard</span></h2>
+            <div class="card" style="padding: 1rem; border-radius: 8px;">
+                <strong data-i18n="coins_balance">Coins Balance:</strong> 
+                <span class="coins-display" style="color: var(--warning); font-size: 1.5rem; font-weight: bold;">0</span>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3 data-i18n="redeem_code" class="mb-4">Redeem Code</h3>
+                <form id="redeemForm">
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="enter_code">Enter 8-character code</label>
+                        <input type="text" id="code" class="form-control" data-i18n="enter_code" required maxlength="8">
+                    </div>
+                    <button type="submit" class="btn btn-primary" data-i18n="btn_redeem">Redeem</button>
+                </form>
+            </div>
+
+            <!-- Stats card for student videos -->
+            <div class="card" style="grid-column: 1 / -1;">
+                <h3 class="mb-4" data-i18n="my_open_videos">My Open Videos</h3>
+                <p class="text-muted mb-4">Videos you have unlocked using coins will appear here permanently.</p>
+                <div id="unlockedContainer" class="grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));">
+                    <!-- Unlocked videos injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Player Modal -->
+    <div id="videoModal" class="modal">
+        <div class="modal-content" style="max-width: 900px; padding: 1rem; background: #000;">
+            <div class="flex items-center justify-between mb-2">
+                <h3 style="color: white; font-size: 1rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80%;" id="modalTitle">Video Player</h3>
+                <button class="btn btn-secondary" id="closeModal" style="padding: 0.25rem 0.5rem;">Close</button>
+            </div>
+            <video id="videoPlayer" controls style="width: 100%; aspect-ratio: 16/9; background: #000; border-radius: var(--radius);" controlslist="nodownload"></video>
+        </div>
+    </div>
+
+    <script src="js/i18n.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Protect Route
+        if (!window.app.token || window.app.user?.role !== 'student') {
+            window.location.href = '/login.html';
+        }
+
+        document.getElementById('redeemForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = document.getElementById('code').value;
+            
+            try {
+                const data = await window.app.apiCall('/codes/redeem', 'POST', { code });
+                window.showNotification(data.message, 'success');
+                // Refresh Me
+                const me = await window.app.apiCall('/auth/me');
+                window.app.setAuth(window.app.token, me.user);
+                document.getElementById('code').value = '';
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        });
+
+        async function loadMyVideos() {
+            try {
+                const data = await window.app.apiCall('/videos/my-videos');
+                const container = document.getElementById('unlockedContainer');
+                container.innerHTML = '';
+                
+                if (data.videos.length === 0) {
+                    container.innerHTML = '<p class="text-muted" style="grid-column: 1 / -1;">You haven\'t unlocked any videos yet. Head over to the grades to start watching!</p>';
+                    return;
+                }
+
+                data.videos.forEach(vid => {
+                    const el = document.createElement('div');
+                    el.className = 'card video-card';
+                    el.style.padding = '1rem';
+                    
+                    el.innerHTML = `
+                        <div class="video-thumbnail" style="cursor: pointer; aspect-ratio: 16/9; margin-bottom: 1rem; border-radius: 8px; background: var(--surface-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;" onclick="playVideo('${vid.id}', ${vid.lastPosition}, '${vid.title}')">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        </div>
+                        <h4 style="font-size: 1rem; word-break: break-all; margin-bottom: 0.5rem;" title="${vid.title}">${vid.title}</h4>
+                        <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 1rem; text-transform: capitalize;">${vid.grade.replace('grade', 'Grade ')}</p>
+                        <button class="btn btn-primary w-full" onclick="playVideo('${vid.id}', ${vid.lastPosition}, '${vid.title}')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Play</button>
+                    `;
+                    container.appendChild(el);
+                });
+            } catch (err) {
+                console.error('Error loading my videos', err);
+            }
+        }
+
+        loadMyVideos();
+
+        // Video Player Logic
+        let currentPlayingId = null;
+        let lastPositionSaveTime = Date.now();
+        const videoPlayer = document.getElementById('videoPlayer');
+
+        window.playVideo = (videoId, startPosition, title) => {
+            currentPlayingId = videoId;
+            const modal = document.getElementById('videoModal');
+            document.getElementById('modalTitle').textContent = title || 'Video Player';
+            videoPlayer.src = `/api/videos/stream/${videoId}?token=${window.app.token}`;
+            
+            // Wait for metadata to set current time
+            videoPlayer.onloadedmetadata = () => {
+                videoPlayer.currentTime = startPosition || 0;
+            };
+
+            modal.classList.add('active');
+            videoPlayer.play();
+        };
+
+        document.getElementById('closeModal').addEventListener('click', () => {
+            document.getElementById('videoModal').classList.remove('active');
+            currentPlayingId = null;
+            videoPlayer.pause();
+            videoPlayer.src = ''; // Stop downloading
+        });
+
+        // Track Progress
+        videoPlayer.addEventListener('timeupdate', () => {
+            if (!currentPlayingId) return;
+            const now = Date.now();
+            if (now - lastPositionSaveTime > 5000) { // Throttle 5 seconds
+                lastPositionSaveTime = now;
+                window.app.apiCall(`/videos/progress/${currentPlayingId}`, 'POST', { position: videoPlayer.currentTime }).catch(()=>{});
+            }
+        });
+    </script>
+</body>
+</html>
