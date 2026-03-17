@@ -99,6 +99,7 @@ a:hover {
     font-weight: 700;
     background: linear-gradient(135deg, var(--primary), var(--secondary));
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     display: flex;
     align-items: center;
@@ -227,6 +228,7 @@ a:hover {
     margin-bottom: 1.5rem;
     background: linear-gradient(to right, var(--primary), var(--secondary));
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 .hero p {
@@ -247,13 +249,30 @@ a:hover {
 .justify-center { justify-content: center; }
 .gap-2 { gap: 0.5rem; }
 .gap-4 { gap: 1rem; }
+.flex-wrap { flex-wrap: wrap; }
 
 /* Responsive tweaks */
 @media (max-width: 768px) {
-    .hero h1 { font-size: 2.5rem; }
-    .navbar .nav-links {
-        display: none; /* In a real app we'd have a hamburger menu, keeping simple for now or showing always */
+    .hero h1 { font-size: 2.2rem; }
+    .navbar .container {
+        flex-direction: column;
+        height: auto;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        gap: 1rem;
     }
+    .navbar .nav-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100%;
+        gap: 0.75rem;
+    }
+    .nav-links a {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.9rem;
+    }
+    .hero { padding: 3rem 0; }
     .grid { grid-template-columns: 1fr; }
 }
 
@@ -306,9 +325,9 @@ a:hover {
 .dev-name {
     font-size: 2rem;
     color: var(--text-main);
-    margin-bottom: 0.5rem;
     background: linear-gradient(135deg, var(--primary), var(--secondary));
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 .dev-role {
