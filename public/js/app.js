@@ -120,7 +120,9 @@ class App {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-            if (res.status === 401 || res.status === 403) this.logout();
+            if (res.status === 401) {
+                this.logout();
+            }
             throw new Error(data.error || 'API Error');
         }
         return data;

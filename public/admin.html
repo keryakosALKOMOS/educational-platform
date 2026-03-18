@@ -213,8 +213,7 @@
         </div>
 
         <!-- Settings Panel -->
-            </div>
-        </div>
+        <div id="settingsPanelContainer"></div>
 
         <!-- Stats Grid -->
         <div class="stats-grid">
@@ -257,16 +256,18 @@
             window.location.href = '/login.html';
         }
 
-        const perms = window.app.user.permissions || [];
+        const getPerms = () => window.app.user?.permissions || [];
 
         function renderAdminHeader() {
             const container = document.getElementById('adminActionBtns');
+            if (!container) return;
             container.innerHTML = '';
+            const perms = getPerms();
             if (perms.includes('manage_videos')) {
                 container.innerHTML += `<a href="admin-videos.html" class="btn btn-primary">🎬 Manage Videos</a>`;
             }
             if (perms.includes('manage_students')) {
-                container.innerHTML += `<a href="admin-students.html" class="btn btn-secondary">Manage Students</a>`;
+                container.innerHTML += `<a href="admin-students.html" class="btn btn-primary">🎓 Manage Students</a>`;
             }
             if (perms.includes('manage_admins')) {
                 container.innerHTML += `<a href="admin-admins.html" class="btn btn-secondary" style="background:var(--secondary);border-color:var(--secondary);">👥 Manage Admins</a>`;
@@ -274,56 +275,112 @@
         }
 
         function renderSettingsPanel() {
+            const container = document.getElementById('settingsPanelContainer');
+            if (!container) return;
+            const perms = getPerms();
             if (perms.includes('manage_codes') || perms.includes('manage_admins')) {
-                const panel = document.createElement('div');
-                panel.className = 'admin-code-settings';
-                panel.innerHTML = `
-                    <h3>⚙️ Code Generation Settings</h3>
-                    <div class="admin-code-settings-row">
-                        ${perms.includes('manage_admins') ? `
-                        <div class="admin-settings-field">
-                            <label for="inputCodesBatch">Codes per Batch</label>
-                            <input type="number" id="inputCodesBatch" min="1" max="10000" value="500" placeholder="e.g. 500">
+                container.innerHTML = `
+                    <div class="admin-code-settings">
+                        <h3>⚙️ Code Generation Settings</h3>
+                        <div class="admin-code-settings-row">
+                            ${perms.includes('manage_admins') ? `
+                            <div class="admin-settings-field">
+                                <label for="inputCodesBatch">Codes per Batch</label>
+                                <input type="number" id="inputCodesBatch" min="1" max="10000" value="500" placeholder="e.g. 500">
+                            </div>
+                            <div class="admin-settings-field">
+                                <label for="inputCoinsPerCode">Coins per Code</label>
+                                <input type="number" id="inputCoinsPerCode" min="1" max="100" value="1" placeholder="e.g. 1">
+                            </div>
+                            <div class="admin-settings-field">
+                                <label>&nbsp;</label>
+                                <button id="btnSaveSettings" class="btn btn-secondary btn-sm" style="height:fit-content; padding: 0.5rem 1rem;">💾 Save Settings</button>
+                            </div>
+                            ` : ''}
+                            ${perms.includes('manage_codes') ? `
+                            <div class="admin-settings-field" style="margin-left: auto;">
+                                <label>&nbsp;</label>
+                                <button id="btnGenerate" class="btn btn-primary" style="height:fit-content;">
+                                    ✨ Generate <span id="generateCountLabel">500</span> Codes
+                                </button>
+                            </div>
+                            ` : ''}
                         </div>
-                        <div class="admin-settings-field">
-                            <label for="inputCoinsPerCode">Coins per Code</label>
-                            <input type="number" id="inputCoinsPerCode" min="1" max="100" value="1" placeholder="e.g. 1">
-                        </div>
-                        <div class="admin-settings-field">
-                            <label>&nbsp;</label>
-                            <button id="btnSaveSettings" class="btn btn-secondary btn-sm" style="height:fit-content; padding: 0.5rem 1rem;">💾 Save Settings</button>
-                        </div>
-                        ` : ''}
-                        ${perms.includes('manage_codes') ? `
-                        <div class="admin-settings-field" style="margin-left: auto;">
-                            <label>&nbsp;</label>
-                            <button id="btnGenerate" class="btn btn-primary" style="height:fit-content;">
-                                ✨ Generate <span id="generateCountLabel">500</span> Codes
-                            </button>
-                        </div>
-                        ` : ''}
                     </div>
                 `;
-                document.querySelector('.container.mt-8').insertBefore(panel, document.querySelector('.stats-grid'));
-                
-                if (perms.includes('manage_admins')) {
-                    document.getElementById('btnSaveSettings').addEventListener('click', saveSettings);
-                    document.getElementById('inputCodesBatch').addEventListener('input', function() {
-                        document.getElementById('generateCountLabel').textContent = this.value;
-                    });
-                }
-                if (perms.includes('manage_codes')) {
-                    document.getElementById('btnGenerate').addEventListener('click', generateCodes);
-                }
+                attachSettingsListeners();
+            }
+        }
+
+        function attachSettingsListeners() {
+            const inputBatch = document.getElementById('inputCodesBatch');
+            const btnSave = document.getElementById('btnSaveSettings');
+            const btnGen = document.getElementById('btnGenerate');
+
+            if (inputBatch) {
+                inputBatch.addEventListener('input', function() {
+                    const val = parseInt(this.value);
+                    if (!isNaN(val) && val > 0) {
+                        const lbl = document.getElementById('generateCountLabel');
+                        if (lbl) lbl.textContent = val;
+                    }
+                });
+            }
+
+            if (btnSave) {
+                btnSave.addEventListener('click', async () => {
+                    const codesVal = parseInt(document.getElementById('inputCodesBatch').value);
+                    const coinsVal = parseInt(document.getElementById('inputCoinsPerCode').value);
+                    // ... same validation and api call ...
+                    try {
+                        const data = await window.app.apiCall('/admin/settings', 'PUT', {
+                            codes_per_batch: codesVal, coins_per_code: coinsVal
+                        });
+                        window.showNotification(data.message, 'success');
+                    } catch (err) { window.showNotification(err.message, 'error'); }
+                });
+            }
+
+            if (btnGen) {
+                btnGen.addEventListener('click', async () => {
+                    const btn = document.getElementById('btnGenerate');
+                    btn.disabled = true;
+                    btn.textContent = 'Generating…';
+                    try {
+                        const data = await window.app.apiCall('/codes/generate', 'POST');
+                        window.showNotification(data.message, 'success');
+                        loadBatches();
+                    } catch (err) {
+                        window.showNotification(err.message, 'error');
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = '✨ Generate <span id="generateCountLabel">' +
+                            (document.getElementById('inputCodesBatch')?.value || '500') + '</span> Codes';
+                    }
+                });
             }
         }
 
         renderAdminHeader();
         renderSettingsPanel();
 
+        // One-time refresh of user data to catch new permissions
+        (async function refreshUser() {
+            try {
+                const data = await window.app.apiCall('/auth/me');
+                window.app.setAuth(window.app.token, data.user);
+                // If permissions changed, we might need to re-render, but let's at least ensure they are there for next reload
+                // For now, if perms were empty and now they aren't, just reload once
+                const currentPerms = getPerms();
+                if (currentPerms.length === 0 && data.user.permissions.length > 0) {
+                    window.location.reload();
+                }
+            } catch(e) {}
+        })();
+
         // ---- Load settings ----
         async function loadSettings() {
-            if (!perms.includes('manage_admins')) return;
+            if (!getPerms().includes('manage_admins')) return;
             try {
                 const data = await window.app.apiCall('/admin/settings');
                 const s = data.settings;
@@ -332,39 +389,15 @@
                 if (document.getElementById('inputCodesBatch')) {
                     document.getElementById('inputCodesBatch').value = codesVal;
                     document.getElementById('inputCoinsPerCode').value = coinsVal;
-                    document.getElementById('generateCountLabel').textContent = codesVal;
+                    const lbl = document.getElementById('generateCountLabel');
+                    if (lbl) lbl.textContent = codesVal;
                 }
             } catch (err) {
                 window.showNotification('Could not load settings: ' + err.message, 'error');
             }
         }
 
-        document.getElementById('inputCodesBatch').addEventListener('input', function() {
-            const val = parseInt(this.value);
-            if (!isNaN(val) && val > 0) {
-                document.getElementById('generateCountLabel').textContent = val;
-            }
-        });
-
-        document.getElementById('btnSaveSettings').addEventListener('click', async () => {
-            const codesVal = parseInt(document.getElementById('inputCodesBatch').value);
-            const coinsVal = parseInt(document.getElementById('inputCoinsPerCode').value);
-            if (isNaN(codesVal) || codesVal < 1 || codesVal > 10000) {
-                window.showNotification('Codes per batch must be between 1 and 10000', 'error'); return;
-            }
-            if (isNaN(coinsVal) || coinsVal < 1 || coinsVal > 100) {
-                window.showNotification('Coins per code must be between 1 and 100', 'error'); return;
-            }
-            try {
-                const data = await window.app.apiCall('/admin/settings', 'PUT', {
-                    codes_per_batch: codesVal, coins_per_code: coinsVal
-                });
-                window.showNotification(data.message, 'success');
-                document.getElementById('generateCountLabel').textContent = codesVal;
-            } catch (err) {
-                window.showNotification(err.message, 'error');
-            }
-        });
+        // Cleanup: remove duplicate listeners that were previously at global scope
 
         // ---- Load batches ----
         async function loadBatches() {
@@ -493,26 +526,12 @@
             }
         }
 
-        // ---- Generate ----
-        document.getElementById('btnGenerate').addEventListener('click', async () => {
-            const btn = document.getElementById('btnGenerate');
-            btn.disabled = true;
-            btn.textContent = 'Generating…';
-            try {
-                const data = await window.app.apiCall('/codes/generate', 'POST');
-                window.showNotification(data.message, 'success');
-                loadBatches();
-            } catch (err) {
-                window.showNotification(err.message, 'error');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '✨ Generate <span id="generateCountLabel">' +
-                    document.getElementById('inputCodesBatch').value + '</span> Codes';
-            }
-        });
-
-        loadSettings();
-        loadBatches();
+        if (getPerms().includes('manage_admins')) {
+            loadSettings();
+        }
+        if (getPerms().includes('manage_codes')) {
+            loadBatches();
+        }
     </script>
 </body>
 </html>

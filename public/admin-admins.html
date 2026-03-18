@@ -152,6 +152,10 @@
             allAdmins.forEach(ad => {
                 const tr = document.createElement('tr');
                 const permsHtml = ad.permissions.map(p => `<span class="perm-badge">${p.replace('manage_', '')}</span>`).join('');
+                
+                const isSuperAdmin = ad.email.toLowerCase() === 'admin@admin.com';
+                const deleteBtn = isSuperAdmin ? '' : `<button class="btn btn-secondary btn-sm" style="background:var(--error);color:white;border-color:var(--error);" onclick="deleteAdmin(${ad.id})">Delete</button>`;
+
                 tr.innerHTML = `
                     <td>${ad.id}</td>
                     <td>${ad.name}</td>
@@ -159,7 +163,7 @@
                     <td>${permsHtml}</td>
                     <td>
                         <button class="btn btn-secondary btn-sm" onclick="editAdmin(${ad.id})">Edit</button>
-                        <button class="btn btn-secondary btn-sm" style="background:var(--error);color:white;border-color:var(--error);" onclick="deleteAdmin(${ad.id})">Delete</button>
+                        ${deleteBtn}
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -173,6 +177,7 @@
             document.getElementById('adminForm').reset();
             document.getElementById('adminId').value = '';
             document.getElementById('aPassword').required = true;
+            document.getElementById('aEmail').disabled = false;
             document.getElementById('adminModal').classList.add('active');
         }
 
@@ -188,6 +193,7 @@
             document.getElementById('aEmail').value = ad.email;
             document.getElementById('aPassword').value = '';
             document.getElementById('aPassword').required = false;
+            document.getElementById('aEmail').disabled = (ad.email.toLowerCase() === 'admin@admin.com');
             
             // Check checkboxes
             document.querySelectorAll('input[name="perm"]').forEach(cb => {

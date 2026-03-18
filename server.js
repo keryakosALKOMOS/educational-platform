@@ -13,6 +13,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+const SUPER_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@admin.com').toLowerCase();
 
 // Middleware
 app.use(cors());
@@ -87,10 +88,11 @@ const requirePermission = (permission) => {
 // =======================
 
 app.post('/api/auth/register', async (req, res) => {
-    const { name, email, password, class_time } = req.body;
+    let { name, email, password, class_time } = req.body;
     if (!name || !email || !password) {
         return res.status(400).json({ error: 'Name, email, and password are required' });
     }
+    email = email.toLowerCase();
 
     try {
         const salt = await bcrypt.genSalt(10);
@@ -114,7 +116,9 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', (req, res) => {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    email = email.toLowerCase();
     db.get(`SELECT * FROM users WHERE email = ?`, [email], async (err, user) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         if (!user) return res.status(400).json({ error: 'User not found' });
@@ -143,8 +147,9 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
 });
 
 app.put('/api/auth/profile', authenticateToken, async (req, res) => {
-    const { name, email, password, class_time } = req.body;
+    let { name, email, password, class_time } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+    email = email.toLowerCase();
 
     if (password && password.trim() !== '') {
         try {
@@ -186,8 +191,9 @@ app.get('/api/admin/admins', authenticateToken, requirePermission('manage_admins
 });
 
 app.post('/api/admin/admins', authenticateToken, requirePermission('manage_admins'), async (req, res) => {
-    const { name, email, password, permissions } = req.body;
+    let { name, email, password, permissions } = req.body;
     if (!name || !email || !password || !permissions) return res.status(400).json({ error: 'All fields are required' });
+    email = email.toLowerCase();
 
     try {
         const salt = await bcrypt.genSalt(10);
@@ -205,31 +211,58 @@ app.post('/api/admin/admins', authenticateToken, requirePermission('manage_admin
 });
 
 app.put('/api/admin/admins/:id', authenticateToken, requirePermission('manage_admins'), async (req, res) => {
-    const { name, email, permissions, password } = req.body;
+    let { name, email, permissions, password } = req.body;
     const adminId = req.params.id;
+    if (email) email = email.toLowerCase();
 
-    if (password && password.trim() !== '') {
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(password, salt);
-        db.run(`UPDATE users SET name = ?, email = ?, password = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
-        [name, email, hash, JSON.stringify(permissions), adminId], function(err) {
-            if (err) return res.status(400).json({ error: 'Database error' });
-            res.json({ message: 'Admin updated successfully' });
-        });
-    } else {
-        db.run(`UPDATE users SET name = ?, email = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
-        [name, email, JSON.stringify(permissions), adminId], function(err) {
-            if (err) return res.status(400).json({ error: 'Database error' });
-            res.json({ message: 'Admin updated successfully' });
-        });
-    }
+    // Protection: Prevent changing email for super-admin
+    db.get(`SELECT email FROM users WHERE id = ?`, [adminId], async (err, row) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        if (row && row.email === SUPER_ADMIN_EMAIL && email !== SUPER_ADMIN_EMAIL) {
+            return res.status(403).json({ error: 'Cannot change email for the main super-admin' });
+        }
+
+        if (password && password.trim() !== '') {
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(password, salt);
+            db.run(`UPDATE users SET name = ?, email = ?, password = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
+            [name, email, hash, JSON.stringify(permissions), adminId], function(err) {
+                if (err) return res.status(400).json({ error: 'Database error' });
+                res.json({ message: 'Admin updated successfully' });
+            });
+        } else {
+            db.run(`UPDATE users SET name = ?, email = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
+            [name, email, JSON.stringify(permissions), adminId], function(err) {
+                if (err) return res.status(400).json({ error: 'Database error' });
+                res.json({ message: 'Admin updated successfully' });
+            });
+        }
+    });
 });
 
 app.delete('/api/admin/admins/:id', authenticateToken, requirePermission('manage_admins'), (req, res) => {
     const adminId = req.params.id;
-    db.run(`DELETE FROM users WHERE id = ? AND role = 'admin'`, [adminId], function(err) {
-        if (err) return res.status(400).json({ error: 'Database error' });
-        res.json({ message: 'Admin deleted successfully' });
+    
+    // Protection: Prevent deleting super-admin
+    db.get(`SELECT email FROM users WHERE id = ?`, [adminId], (err, row) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        if (row && row.email === SUPER_ADMIN_EMAIL) {
+            return res.status(403).json({ error: 'Cannot delete the main super-admin account' });
+        }
+
+        console.log(`[Admin Delete] Attempting to delete admin ID: ${adminId}`);
+        db.run(`DELETE FROM users WHERE id = ? AND role = 'admin'`, [adminId], function(err) {
+            if (err) {
+                console.error(`[Admin Delete] Error deleting ID ${adminId}:`, err);
+                return res.status(400).json({ error: 'Database error' });
+            }
+            if (this.changes === 0) {
+                console.warn(`[Admin Delete] No changes made. ID ${adminId} not found or not an admin.`);
+                return res.status(404).json({ error: 'Admin not found' });
+            }
+            console.log(`[Admin Delete] Successfully deleted admin ID: ${adminId}`);
+            res.json({ message: 'Admin deleted successfully' });
+        });
     });
 });
 
@@ -245,8 +278,9 @@ app.get('/api/admin/students', authenticateToken, requirePermission('manage_stud
 });
 
 app.post('/api/admin/students', authenticateToken, requirePermission('manage_students'), async (req, res) => {
-    const { name, email, password, coins, class_time } = req.body;
+    let { name, email, password, coins, class_time } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
+    email = email.toLowerCase();
     try {
         const salt = await bcrypt.genSalt(10);
         const hash = await bcrypt.hash(password, salt);
@@ -261,8 +295,9 @@ app.post('/api/admin/students', authenticateToken, requirePermission('manage_stu
 });
 
 app.put('/api/admin/students/:id', authenticateToken, requirePermission('manage_students'), async (req, res) => {
-    const { name, email, password, coins, class_time } = req.body;
+    let { name, email, password, coins, class_time } = req.body;
     const studentId = req.params.id;
+    if (email) email = email.toLowerCase();
 
     if (password && password.trim() !== '') {
         try {

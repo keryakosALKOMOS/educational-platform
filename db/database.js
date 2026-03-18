@@ -32,6 +32,12 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 if (err && !err.message.includes("duplicate column name")) console.error("Migration error adding permissions:", err);
             });
 
+            // Normalize all existing emails to lowercase
+            db.run(`UPDATE users SET email = LOWER(email)`, (err) => {
+                if (err) console.error("Migration error normalizing emails:", err);
+                else console.log("Migration complete: Normalized all emails to lowercase.");
+            });
+
             // Create Codes table
             db.run(`CREATE TABLE IF NOT EXISTS codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +93,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
             });
 
             // Check and insert default admin
-            const adminEmail = process.env.ADMIN_EMAIL || 'admin@admin.com';
+            const adminEmail = (process.env.ADMIN_EMAIL || 'admin@admin.com').toLowerCase();
             const adminPassword = process.env.ADMIN_PASSWORD || 'adminpassword';
             
             db.get(`SELECT * FROM users WHERE email = ?`, [adminEmail], async (err, row) => {
