@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Take Exam</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .exam-header { position: sticky; top: 0; background: var(--surface); padding: 1rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1); z-index: 100; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); }
+        .timer { font-size: 1.5rem; font-family: monospace; font-weight:bold; color: var(--error); }
+        .q-card { background: var(--surface); padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 8px; border: 1px solid var(--border); }
+        .q-text { font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
+        .opt-label { display: block; padding: 0.8rem 1rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.5rem; cursor: pointer; transition: background 0.2s; }
+        .opt-label:hover { background: var(--surface-hover); }
+        .opt-label input { margin-right: 0.8rem; accent-color: var(--primary); transform: scale(1.2); }
+    </style>
+</head>
+<body data-auth="guest">
+    <div class="exam-header" id="examHeader" style="display:none;">
+        <h2 id="examTitle" style="margin:0; font-size:1.2rem;">Exam Title</h2>
+        <div class="timer" id="timerDisplay">00:00:00</div>
+    </div>
+
+    <div class="container mt-8" id="loader">
+        <div style="text-align:center;">Preparing your exam...</div>
+    </div>
+
+    <div class="container mt-4" id="examContent" style="display:none; padding-bottom: 4rem;">
+        <form id="examForm"></form>
+        <button id="btnSubmit" class="btn btn-primary w-full mt-4" style="height:50px; font-size:1.1rem;">Submit Exam</button>
+    </div>
+
+    <div class="container mt-8" id="resultContent" style="display:none; text-align:center;">
+        <h2 style="color:var(--success);">Exam Submitted Successfully!</h2>
+        <p id="scoreDisplay" style="font-size:2rem; font-weight:bold; margin:2rem 0; color:var(--primary);"></p>
+        <a href="student-exams.html" class="btn btn-primary">Back to My Exams</a>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        if (!window.app.token || window.app.user?.role !== 'student') {
+            window.location.href = '/login.html';
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const examId = params.get('id');
+        if (!examId) window.location.href = 'student-exams.html';
+
+        let examEndTime = null;
+        let submitTimer = null;
+        let isSubmitted = false;
+
+        async function initExam() {
+            try {
+                const data = await window.app.apiCall(`/student/exams/${examId}`);
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('examHeader').style.display = 'flex';
+                document.getElementById('examContent').style.display = 'block';
+
+                const exam = data.exam;
+                document.getElementById('examTitle').textContent = exam.title;
+
+                const form = document.getElementById('examForm');
+                data.questions.forEach((q, idx) => {
+                    const card = document.createElement('div');
+                    card.className = 'q-card';
+                    card.innerHTML = `
+                        <div class="q-text">${idx + 1}. ${q.question_text}</div>
+                        <label class="opt-label"><input type="radio" name="q_${q.id}" value="a"> A. ${q.option_a}</label>
+                        <label class="opt-label"><input type="radio" name="q_${q.id}" value="b"> B. ${q.option_b}</label>
+                        <label class="opt-label"><input type="radio" name="q_${q.id}" value="c"> C. ${q.option_c}</label>
+                        <label class="opt-label"><input type="radio" name="q_${q.id}" value="d"> D. ${q.option_d}</label>
+                    `;
+                    form.appendChild(card);
+                });
+
+                const endTimestampByDuration = new Date().getTime() + (exam.duration_minutes * 60 * 1000);
+                const absoluteEndTimestamp = new Date(exam.end_time).getTime();
+                
+                examEndTime = Math.min(endTimestampByDuration, absoluteEndTimestamp);
+                
+                startTimer();
+            } catch (err) {
+                document.getElementById('loader').innerHTML = `<div style="color:var(--error);">${err.message}</div><a href="student-exams.html" class="btn btn-secondary mt-4">Back</a>`;
+            }
+        }
+
+        function startTimer() {
+            submitTimer = setInterval(() => {
+                if (isSubmitted) return clearInterval(submitTimer);
+                
+                const now = new Date().getTime();
+                const distance = examEndTime - now;
+                
+                if (distance <= 0) {
+                    clearInterval(submitTimer);
+                    document.getElementById('timerDisplay').textContent = "Time's up!";
+                    autoSubmit();
+                    return;
+                }
+                
+                const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const s = Math.floor((distance % (1000 * 60)) / 1000);
+                
+                document.getElementById('timerDisplay').textContent = 
+                    (h > 0 ? h.toString().padStart(2, '0') + ':' : '') + 
+                    m.toString().padStart(2, '0') + ':' + 
+                    s.toString().padStart(2, '0');
+            }, 1000);
+        }
+
+        document.getElementById('btnSubmit').addEventListener('click', () => {
+            if (confirm('Are you sure you want to submit? You cannot change your answers.')) {
+                submitExam();
+            }
+        });
+
+        // Prevent form submission on enter
+        document.getElementById('examForm').addEventListener('submit', e => e.preventDefault());
+
+        function autoSubmit() {
+            if (isSubmitted) return;
+            window.showNotification('Time is up. Auto-submitting exam...', 'warning');
+            submitExam();
+        }
+
+        async function submitExam() {
+            if (isSubmitted) return;
+            isSubmitted = true;
+            document.getElementById('btnSubmit').disabled = true;
+            document.getElementById('btnSubmit').textContent = 'Submitting...';
+            
+            const form = document.getElementById('examForm');
+            const data = new FormData(form);
+            const answers = {};
+            
+            for (let [key, val] of data.entries()) {
+                if (key.startsWith('q_')) {
+                    answers[key.replace('q_', '')] = val;
+                }
+            }
+
+            try {
+                const res = await window.app.apiCall(`/student/exams/${examId}/submit`, 'POST', { answers });
+                document.getElementById('examHeader').style.display = 'none';
+                document.getElementById('examContent').style.display = 'none';
+                document.getElementById('resultContent').style.display = 'block';
+                document.getElementById('scoreDisplay').textContent = `Your Score: ${res.score} / ${res.total}`;
+            } catch (err) {
+                document.getElementById('btnSubmit').disabled = false;
+                document.getElementById('btnSubmit').textContent = 'Submit Exam';
+                isSubmitted = false;
+                window.showNotification(err.message, 'error');
+            }
+        }
+
+        initExam();
+    </script>
+</body>
+</html>

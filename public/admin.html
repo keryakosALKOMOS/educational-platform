@@ -269,6 +269,10 @@
             if (perms.includes('manage_students')) {
                 container.innerHTML += `<a href="admin-students.html" class="btn btn-primary">🎓 Manage Students</a>`;
             }
+            if (perms.includes('manage_exams')) {
+                container.innerHTML += `<a href="admin-exam-generator.html" class="btn btn-primary" style="background: #8b5cf6; border-color: #8b5cf6;">✨ Generate Exam</a>`;
+                container.innerHTML += `<a href="admin-reports.html" class="btn btn-secondary">📊 Reports</a>`;
+            }
             if (perms.includes('manage_admins')) {
                 container.innerHTML += `<a href="admin-admins.html" class="btn btn-secondary" style="background:var(--secondary);border-color:var(--secondary);">👥 Manage Admins</a>`;
             }

@@ -7,6 +7,16 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const db = require('./db/database');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+const uploadsDir = path.join(__dirname, 'tmp', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+const upload = multer({ dest: uploadsDir });
 
 dotenv.config();
 
@@ -700,6 +710,278 @@ app.get('/api/videos/stream/:id', (req, res) => {
         });
     });
 });
+
+// =======================
+// EXAMS APIs (ADMIN)
+// =======================
+
+app.post('/api/admin/exams/generate', authenticateToken, requirePermission('manage_exams'), upload.array('files'), async (req, res) => {
+    try {
+        const { topic, difficulty, questionCount } = req.body;
+        let combinedText = topic || '';
+        
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                if (file.mimetype === 'application/pdf') {
+                    const dataBuffer = fs.readFileSync(file.path);
+                    const pdfData = await pdfParse(dataBuffer);
+                    combinedText += '\n' + pdfData.text;
+                } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                    const result = await mammoth.extractRawText({ path: file.path });
+                    combinedText += '\n' + result.value;
+                } else if (file.mimetype === 'text/plain') {
+                    combinedText += '\n' + fs.readFileSync(file.path, 'utf8');
+                }
+                fs.unlinkSync(file.path);
+            }
+        }
+
+        if (!combinedText.trim()) {
+            return res.status(400).json({ error: 'Please provide a topic or upload at least one valid file with text.' });
+        }
+
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `You are an expert educator.
+Generate ${questionCount || 5} multiple-choice questions (MCQs) based on the following content.
+Difficulty Level: ${difficulty || 'medium'}.
+The output MUST be a strict JSON array containing objects with the following schema:
+[
+  {
+    "question_text": "Question text here?",
+    "option_a": "First option",
+    "option_b": "Second option",
+    "option_c": "Third option",
+    "option_d": "Fourth option",
+    "correct_option": "a" // must be one of: "a", "b", "c", "d"
+  }
+]
+Do not return anything except the valid JSON array string. Extract key concepts and avoid duplicate or weak questions.
+
+Content:
+${combinedText.substring(0, 30000)}
+`;
+
+        const result = await model.generateContent(prompt);
+        let rawResponse = result.response.text().trim();
+        
+        if (rawResponse.startsWith('```json')) {
+            rawResponse = rawResponse.replace(/^```json/g, '').replace(/```$/g, '').trim();
+        } else if (rawResponse.startsWith('```')) {
+            rawResponse = rawResponse.replace(/^```/g, '').replace(/```$/g, '').trim();
+        }
+
+        const questions = JSON.parse(rawResponse);
+        res.json({ questions });
+    } catch (err) {
+        console.error('AI Generation Error:', err);
+        res.status(500).json({ error: 'Failed to generate questions. Ensure your API Key is valid and try again.' });
+    }
+});
+
+app.post('/api/admin/exams', authenticateToken, requirePermission('manage_exams'), (req, res) => {
+    let { title, description, duration_minutes, start_time, end_time, assigned_to_class_time, questions } = req.body;
+    
+    if (!title || !duration_minutes || !start_time || !end_time || !questions || !Array.isArray(questions)) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        
+        db.run(`INSERT INTO exams (title, description, duration_minutes, start_time, end_time, assigned_to_class_time) VALUES (?, ?, ?, ?, ?, ?)`,
+        [title, description || '', duration_minutes, start_time, end_time, assigned_to_class_time || 'all'], function(err) {
+            if (err) {
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Error creating exam' });
+            }
+            
+            const examId = this.lastID;
+            const stmt = db.prepare(`INSERT INTO questions (exam_id, question_text, option_a, option_b, option_c, option_d, correct_option) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+            
+            for (let q of questions) {
+                stmt.run([examId, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option]);
+            }
+            
+            stmt.finalize();
+            
+            db.run('COMMIT', (err) => {
+                if (err) return res.status(500).json({ error: 'Error saving questions' });
+                res.json({ message: 'Exam created successfully', exam_id: examId });
+            });
+        });
+    });
+});
+
+app.get('/api/admin/exams', authenticateToken, requirePermission('manage_exams'), (req, res) => {
+    db.all(`SELECT * FROM exams ORDER BY id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ exams: rows });
+    });
+});
+
+app.get('/api/admin/exams/:id/questions', authenticateToken, requirePermission('manage_exams'), (req, res) => {
+    db.all(`SELECT * FROM questions WHERE exam_id = ?`, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ questions: rows });
+    });
+});
+
+app.delete('/api/admin/exams/:id', authenticateToken, requirePermission('manage_exams'), (req, res) => {
+    db.run(`DELETE FROM exams WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ message: 'Exam deleted successfully' });
+    });
+});
+
+app.get('/api/admin/reports', authenticateToken, requirePermission('manage_exams'), (req, res) => {
+    db.all(`SELECT * FROM exam_reports ORDER BY id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ reports: rows });
+    });
+});
+
+app.delete('/api/admin/reports/:id', authenticateToken, requirePermission('manage_exams'), (req, res) => {
+    db.run(`DELETE FROM exam_reports WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ message: 'Report deleted successfully' });
+    });
+});
+
+// =======================
+// EXAMS APIs (STUDENT)
+// =======================
+
+app.get('/api/student/exams', authenticateToken, (req, res) => {
+    const classTime = req.user.class_time || '';
+    const nowISO = new Date().toISOString();
+    
+    db.all(`
+        SELECT id, title, description, duration_minutes, start_time, end_time 
+        FROM exams 
+        WHERE status = 'active'
+        AND end_time > ?
+        AND (assigned_to_class_time = 'all' OR assigned_to_class_time = ?)
+        ORDER BY start_time ASC
+    `, [nowISO, classTime], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        
+        db.all(`SELECT exam_id, status, score FROM student_exams WHERE user_id = ?`, [req.user.id], (err2, studentRows) => {
+            const studentExamMap = {};
+            if (!err2 && studentRows) {
+                studentRows.forEach(sr => studentExamMap[sr.exam_id] = sr);
+            }
+            
+            const results = rows.map(r => ({
+                ...r,
+                student_status: studentExamMap[r.id] ? studentExamMap[r.id].status : 'not_started',
+                student_score: studentExamMap[r.id] ? studentExamMap[r.id].score : null
+            }));
+            
+            res.json({ exams: results });
+        });
+    });
+});
+
+app.get('/api/student/exams/:id', authenticateToken, (req, res) => {
+    const examId = req.params.id;
+    const nowISO = new Date().toISOString();
+    
+    db.get(`SELECT * FROM exams WHERE id = ? AND status = 'active'`, [examId], (err, exam) => {
+        if (err || !exam) return res.status(404).json({ error: 'Exam not found or no longer active' });
+        
+        if (exam.start_time > nowISO) {
+            return res.status(403).json({ error: 'Exam has not started yet' });
+        }
+        if (exam.end_time < nowISO) {
+            return res.status(403).json({ error: 'Exam has already ended' });
+        }
+        if (exam.assigned_to_class_time !== 'all' && exam.assigned_to_class_time !== req.user.class_time) {
+            return res.status(403).json({ error: 'Not assigned to this exam' });
+        }
+
+        db.get(`SELECT * FROM student_exams WHERE user_id = ? AND exam_id = ?`, [req.user.id, examId], (err, studentExam) => {
+            if (studentExam && studentExam.status === 'submitted') {
+                return res.status(403).json({ error: 'You have already submitted this exam.' });
+            }
+
+            if (!studentExam) {
+                db.run(`INSERT INTO student_exams (user_id, exam_id, started_at, status) VALUES (?, ?, ?, 'in_progress')`, [req.user.id, examId, nowISO]);
+            }
+            
+            db.all(`SELECT id, question_text, option_a, option_b, option_c, option_d FROM questions WHERE exam_id = ?`, [examId], (err, questions) => {
+                res.json({ exam, questions }); // Exclude correct_option from output
+            });
+        });
+    });
+});
+
+app.post('/api/student/exams/:id/submit', authenticateToken, (req, res) => {
+    const examId = req.params.id;
+    const answers = req.body.answers || {}; 
+    const nowISO = new Date().toISOString();
+    
+    db.get(`SELECT * FROM student_exams WHERE user_id = ? AND exam_id = ?`, [req.user.id, examId], (err, studentExam) => {
+        if (err || !studentExam) return res.status(403).json({ error: 'You have not started this exam.' });
+        if (studentExam.status === 'submitted') return res.status(400).json({ error: 'Exam already submitted.' });
+        
+        db.all(`SELECT id, correct_option FROM questions WHERE exam_id = ?`, [examId], (err, questions) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            
+            let score = 0;
+            questions.forEach(q => {
+                if (answers[q.id] === q.correct_option) {
+                    score++;
+                }
+            });
+            
+            db.run(`UPDATE student_exams SET completed_at = ?, score = ?, total_questions = ?, status = 'submitted' WHERE id = ?`,
+            [nowISO, score, questions.length, studentExam.id], function(err) {
+                if (err) return res.status(500).json({ error: 'Failed to submit' });
+                res.json({ message: 'Exam submitted successfully', score, total: questions.length });
+            });
+        });
+    });
+});
+
+// =======================
+// BACKGROUND JOB: AUTO-CLEANUP EXAMS
+// =======================
+setInterval(() => {
+    const nowISO = new Date().toISOString();
+    db.all(`SELECT id, title FROM exams WHERE end_time < ? AND status = 'active'`, [nowISO], (err, exams) => {
+        if (err || !exams || exams.length === 0) return;
+
+        exams.forEach(exam => {
+            db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
+                
+                db.all(`
+                    SELECT se.user_id, se.score, se.total_questions, se.completed_at, u.name, u.email, u.class_time 
+                    FROM student_exams se 
+                    JOIN users u ON se.user_id = u.id 
+                    WHERE se.exam_id = ? AND se.status = 'submitted'`, [exam.id], (err, results) => {
+                    
+                    if (!err && results && results.length > 0) {
+                        const stmt = db.prepare(`INSERT INTO exam_reports (exam_title, user_id, student_name, student_email, class_time, score, total_questions, submitted_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+                        results.forEach(r => {
+                            stmt.run([exam.title, r.user_id, r.name, r.email, r.class_time, r.score, r.total_questions, r.completed_at, nowISO]);
+                        });
+                        stmt.finalize();
+                    }
+                    
+                    db.run(`UPDATE exams SET status = 'ended' WHERE id = ?`, [exam.id]);
+                    db.run(`DELETE FROM exams WHERE id = ?`, [exam.id]);
+                    
+                    db.run('COMMIT', (err) => {
+                        if (!err) console.log(`[Background] Auto-cleanup processed for exam: ${exam.title}`);
+                    });
+                });
+            });
+        });
+    });
+}, 5 * 60 * 1000);
 
 app.use((req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));

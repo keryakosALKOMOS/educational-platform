@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - My Exams</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .exam-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; position: relative; }
+        .exam-status { position: absolute; top: 1rem; right: 1rem; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+        .status-upcoming { background: rgba(79,70,229,0.1); color: var(--primary); }
+        .status-active { background: rgba(16,185,129,0.1); color: var(--success); }
+        .status-submitted { background: rgba(34,197,94,0.1); color: var(--success); }
+        .exam-time { font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
+        .countdown { font-family: monospace; font-size: 1.1rem; font-weight: 700; color: var(--error); margin-top: 0.5rem; }
+    </style>
+</head>
+<body data-auth="guest">
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform
+            </a>
+            <div class="nav-links">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="#" class="btn btn-secondary logout-btn">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-8">
+        <h2 class="mb-4">📝 My Exams</h2>
+        <div id="examsContainer" class="grid">
+            <div style="grid-column: 1/-1; text-align:center;">Loading exams...</div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        if (!window.app.token || window.app.user?.role !== 'student') {
+            window.location.href = '/login.html';
+        }
+
+        async function loadExams() {
+            try {
+                const data = await window.app.apiCall('/student/exams');
+                const container = document.getElementById('examsContainer');
+                container.innerHTML = '';
+                
+                if (data.exams.length === 0) {
+                    container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 3rem; color: var(--text-muted);">No exams assigned to you at the moment.</div>';
+                    return;
+                }
+
+                const now = new Date().getTime();
+
+                data.exams.forEach(ex => {
+                    const card = document.createElement('div');
+                    card.className = 'exam-card';
+                    
+                    const startTime = new Date(ex.start_time).getTime();
+                    const endTime = new Date(ex.end_time).getTime();
+                    
+                    let statusLabel = '';
+                    let statusClass = '';
+                    let actionHtml = '';
+                    let timerHtml = '';
+
+                    if (ex.student_status === 'submitted') {
+                        statusLabel = 'Submitted';
+                        statusClass = 'status-submitted';
+                        actionHtml = `<div style="margin-top:1rem; font-weight:bold; color:var(--primary);">Your Score: ${ex.student_score ?? 'N/A'}</div>`;
+                    } else if (now < startTime) {
+                        statusLabel = 'Upcoming';
+                        statusClass = 'status-upcoming';
+                        timerHtml = `<div class="countdown" id="cd-${ex.id}">Starts in: ...</div>`;
+                        actionHtml = `<button class="btn btn-secondary mt-2" disabled>Not Started Yet</button>`;
+                        startCountdown(ex.id, startTime, 'Starts in: ', () => loadExams());
+                    } else if (now >= startTime && now <= endTime) {
+                        statusLabel = 'Active Now';
+                        statusClass = 'status-active';
+                        timerHtml = `<div class="countdown" id="cd-${ex.id}">Ends in: ...</div>`;
+                        actionHtml = `<a href="take-exam.html?id=${ex.id}" class="btn btn-primary mt-2 flex justify-center" style="display:flex;">Start Exam</a>`;
+                        startCountdown(ex.id, endTime, 'Ends in: ', () => loadExams());
+                    } else {
+                        statusLabel = 'Ended';
+                        statusClass = 'status-active';
+                        actionHtml = `<button class="btn btn-secondary mt-2" disabled>Exam Ended</button>`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="exam-status ${statusClass}">${statusLabel}</div>
+                        <h3 style="margin-top:0.5rem; margin-bottom:0.2rem; margin-right:5rem;">${ex.title}</h3>
+                        <p class="text-muted" style="font-size:0.9rem;">${ex.description || 'No description provided'}</p>
+                        <div class="exam-time mt-2">⏱ Duration: ${ex.duration_minutes} Minutes</div>
+                        <div class="exam-time">📅 Due: ${new Date(ex.end_time).toLocaleString()}</div>
+                        ${timerHtml}
+                        ${actionHtml}
+                    `;
+                    container.appendChild(card);
+                });
+            } catch (err) {
+                console.error(err);
+                document.getElementById('examsContainer').innerHTML = `<div style="grid-column: 1/-1; color: var(--error);">Failed to load exams</div>`;
+            }
+        }
+
+        function startCountdown(id, targetTime, prefix, onComplete) {
+            const el = document.getElementById(`cd-${id}`);
+            if (!el) return;
+            const interval = setInterval(() => {
+                const elFresh = document.getElementById(`cd-${id}`);
+                if (!elFresh) { clearInterval(interval); return; }
+                const now = new Date().getTime();
+                const distance = targetTime - now;
+                
+                if (distance < 0) {
+                    clearInterval(interval);
+                    if(onComplete) onComplete();
+                    return;
+                }
+                
+                const d = Math.floor(distance / (1000 * 60 * 60 * 24));
+                const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const s = Math.floor((distance % (1000 * 60)) / 1000);
+                
+                let timeStr = '';
+                if (d > 0) timeStr += `${d}d `;
+                timeStr += `${h}h ${m}m ${s}s`;
+                elFresh.textContent = prefix + timeStr;
+            }, 1000);
+        }
+
+        loadExams();
+    </script>
+</body>
+</html>

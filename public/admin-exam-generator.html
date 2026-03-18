@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Exam Generator</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .exam-container { max-width: 800px; margin: 0 auto; background: var(--surface); padding: 2rem; border-radius: var(--radius); border: 1px solid var(--border); }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-main); }
+        .form-control { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-hover); color: var(--text-main); font-size: 1rem; }
+        .form-control:focus { outline: 2px solid var(--primary); border-color: transparent; }
+        .question-card { background: var(--bg-main); border: 1px solid var(--border); padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; position: relative; }
+        .question-card h4 { margin-top: 0; margin-bottom: 1rem; font-size: 1.1rem; }
+        .options-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .option-item { display: flex; align-items: center; gap: 0.5rem; }
+        .option-item input[type="radio"] { width: 18px; height: 18px; accent-color: var(--primary); }
+        .remove-btn { position: absolute; top: 1rem; right: 1rem; background: rgba(239,68,68,0.1); color: var(--error); border: none; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+        .remove-btn:hover { background: rgba(239,68,68,0.2); }
+        .loader { display: none; margin: 2rem auto; border: 4px solid var(--surface-hover); border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    </style>
+</head>
+<body data-auth="guest">
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform Admin
+            </a>
+            <div class="nav-links">
+                <a href="admin.html" class="btn btn-secondary">Dashboard</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2>✨ AI Exam Generator</h2>
+            <a href="admin.html" class="btn btn-secondary">Back to Admin</a>
+        </div>
+
+        <div class="exam-container" id="step1">
+            <h3 style="margin-bottom: 1.5rem;">Step 1: Provide Content for AI</h3>
+            <div class="form-group">
+                <label>Topic or Explanation</label>
+                <textarea id="topicInput" class="form-control" rows="5" placeholder="Paste study material or describe what the exam is about..."></textarea>
+            </div>
+            <div class="form-group border-dashed border-2" style="border-color: var(--border); padding: 1.5rem; text-align: center; border-radius: 8px;">
+                <label>Upload Materials (PDF, DOCX, TXT) - Optional</label>
+                <input type="file" id="filesInput" multiple class="form-control" accept=".pdf,.txt,.docx" style="background: transparent; border: none;">
+            </div>
+            <div class="split-grid">
+                <div class="form-group">
+                    <label>Difficulty</label>
+                    <select id="difficultyInput" class="form-control">
+                        <option value="easy">Easy</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="hard">Hard</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Number of Questions</label>
+                    <input type="number" id="countInput" class="form-control" value="5" min="1" max="50">
+                </div>
+            </div>
+            <button id="btnGenerate" class="btn btn-primary w-full mt-4" style="height: 50px; font-size: 1.1rem;">Generate with AI ✨</button>
+            <div class="loader" id="aiLoader"></div>
+        </div>
+
+        <div class="exam-container" id="step2" style="display: none; margin-top: 2rem;">
+            <h3 style="margin-bottom: 1.5rem;">Step 2: Review & Schedule Exam</h3>
+            
+            <div class="form-group">
+                <label>Exam Title</label>
+                <input type="text" id="examTitle" class="form-control" placeholder="e.g., Mathematics Midterm">
+            </div>
+            
+            <div class="split-grid">
+                <div class="form-group">
+                    <label>Assigned To</label>
+                    <select id="assignInput" class="form-control">
+                        <option value="all">Every Student</option>
+                        <!-- Other options populated dynamically -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Duration (Minutes)</label>
+                    <input type="number" id="durationInput" class="form-control" value="15" min="1">
+                </div>
+            </div>
+
+            <div class="split-grid">
+                <div class="form-group">
+                    <label>Start Time</label>
+                    <input type="datetime-local" id="startTimeInput" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>End Time</label>
+                    <input type="datetime-local" id="endTimeInput" class="form-control">
+                </div>
+            </div>
+
+            <div style="margin: 2rem 0;">
+                <h4 style="margin-bottom: 1rem; color: var(--primary);">Generated Questions</h4>
+                <div id="questionsContainer"></div>
+            </div>
+
+            <button id="btnPublish" class="btn btn-primary w-full" style="height: 50px; font-size: 1.1rem;">Publish Exam 🚀</button>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        if (!window.app.token || window.app.user?.role !== 'admin') {
+            window.location.href = '/login.html';
+        }
+
+        let generatedQuestions = [];
+
+        // Set default times (local time)
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        document.getElementById('startTimeInput').value = now.toISOString().slice(0, 16);
+        
+        const later = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour later
+        document.getElementById('endTimeInput').value = later.toISOString().slice(0, 16);
+
+        // Fetch class times
+        async function fetchClassTimes() {
+            try {
+                const data = await window.app.apiCall('/admin/students');
+                const classes = new Set();
+                data.students.forEach(s => {
+                    if (s.class_time) classes.add(s.class_time);
+                });
+                const select = document.getElementById('assignInput');
+                classes.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = `Group / Class Time: ${c}`;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('Failed to load classes', err);
+            }
+        }
+        fetchClassTimes();
+
+        document.getElementById('btnGenerate').addEventListener('click', async () => {
+            const topic = document.getElementById('topicInput').value;
+            const files = document.getElementById('filesInput').files;
+            const difficulty = document.getElementById('difficultyInput').value;
+            const count = document.getElementById('countInput').value;
+
+            if (!topic.trim() && files.length === 0) {
+                return window.showNotification('Please provide a topic or upload at least one file.', 'error');
+            }
+
+            const formData = new FormData();
+            formData.append('topic', topic);
+            formData.append('difficulty', difficulty);
+            formData.append('questionCount', count);
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+
+            const btn = document.getElementById('btnGenerate');
+            const loader = document.getElementById('aiLoader');
+            btn.style.display = 'none';
+            loader.style.display = 'block';
+
+            try {
+                const token = window.app.token;
+                const res = await fetch('/api/admin/exams/generate', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (!res.ok) throw new Error(data.error || 'Failed to generate');
+                
+                generatedQuestions = data.questions;
+                renderQuestions();
+                document.getElementById('step2').style.display = 'block';
+                window.showNotification('Questions generated successfully!', 'success');
+                document.getElementById('step2').scrollIntoView({ behavior: 'smooth' });
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+                btn.style.display = 'block';
+            } finally {
+                loader.style.display = 'none';
+            }
+        });
+
+        function renderQuestions() {
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = '';
+            
+            generatedQuestions.forEach((q, idx) => {
+                const card = document.createElement('div');
+                card.className = 'question-card';
+                card.innerHTML = `
+                    <button class="remove-btn" onclick="removeQuestion(${idx})">✖</button>
+                    <h4>Q${idx + 1}: ${q.question_text}</h4>
+                    <div class="options-list">
+                        <label class="option-item">
+                            <input type="radio" disabled ${q.correct_option === 'a' ? 'checked' : ''}>
+                            A. ${q.option_a}
+                        </label>
+                        <label class="option-item">
+                            <input type="radio" disabled ${q.correct_option === 'b' ? 'checked' : ''}>
+                            B. ${q.option_b}
+                        </label>
+                        <label class="option-item">
+                            <input type="radio" disabled ${q.correct_option === 'c' ? 'checked' : ''}>
+                            C. ${q.option_c}
+                        </label>
+                        <label class="option-item">
+                            <input type="radio" disabled ${q.correct_option === 'd' ? 'checked' : ''}>
+                            D. ${q.option_d}
+                        </label>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        window.removeQuestion = (idx) => {
+            generatedQuestions.splice(idx, 1);
+            renderQuestions();
+        };
+
+        document.getElementById('btnPublish').addEventListener('click', async () => {
+            const title = document.getElementById('examTitle').value;
+            const duration = document.getElementById('durationInput').value;
+            const start = document.getElementById('startTimeInput').value;
+            const end = document.getElementById('endTimeInput').value;
+            const assign = document.getElementById('assignInput').value;
+
+            if (!title || !start || !end) {
+                return window.showNotification('Please fill all schedule fields.', 'error');
+            }
+            if (generatedQuestions.length === 0) {
+                return window.showNotification('No questions available to publish.', 'error');
+            }
+
+            const payload = {
+                title,
+                duration_minutes: parseInt(duration),
+                start_time: new Date(start).toISOString(),
+                end_time: new Date(end).toISOString(),
+                assigned_to_class_time: assign,
+                questions: generatedQuestions
+            };
+
+            const btn = document.getElementById('btnPublish');
+            btn.disabled = true;
+            btn.textContent = 'Publishing...';
+
+            try {
+                const data = await window.app.apiCall('/admin/exams', 'POST', payload);
+                window.showNotification(data.message, 'success');
+                setTimeout(() => window.location.href = 'admin.html', 1500);
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Publish Exam 🚀';
+            }
+        });
+    </script>
+</body>
+</html>
