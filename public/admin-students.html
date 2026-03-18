@@ -219,7 +219,7 @@
 
         async function loadStudents() {
             try {
-                const data = await window.app.apiCall('/students');
+                const data = await window.app.apiCall('/admin/students');
                 allStudents = data.students;
                 renderStudents();
             } catch (err) {
@@ -328,7 +328,7 @@
                 class_time: class_time
             };
 
-            const url = isEditing ? `/students/${document.getElementById('studentId').value}` : `/students`;
+            const url = isEditing ? `/admin/students/${document.getElementById('studentId').value}` : `/admin/students`;
             const method = isEditing ? 'PUT' : 'POST';
 
             try {
@@ -355,7 +355,7 @@
             const id = document.getElementById('deleteStudentId').value;
             if (!id) return;
             try {
-                const data = await window.app.apiCall(`/students/${id}`, 'DELETE');
+                const data = await window.app.apiCall(`/admin/students/${id}`, 'DELETE');
                 window.showNotification(data.message, 'success');
                 closeDeleteModal();
                 loadStudents();

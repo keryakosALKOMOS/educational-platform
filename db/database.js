@@ -24,13 +24,12 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 class_time TEXT
             )`);
 
-            // Auto-migrate existing DB to add class_time if it doesn't exist
+            // Auto-migrate existing DB to add class_time and permissions if they don't exist
             db.run(`ALTER TABLE users ADD COLUMN class_time TEXT`, (err) => {
-                if (err && !err.message.includes("duplicate column name")) {
-                    console.error("Migration error adding class_time:", err);
-                } else if (!err) {
-                    console.log("Migration complete: Added class_time to users table.");
-                }
+                if (err && !err.message.includes("duplicate column name")) console.error("Migration error adding class_time:", err);
+            });
+            db.run(`ALTER TABLE users ADD COLUMN permissions TEXT`, (err) => {
+                if (err && !err.message.includes("duplicate column name")) console.error("Migration error adding permissions:", err);
             });
 
             // Create Codes table
@@ -99,13 +98,20 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 if (!row) {
                     const salt = await bcrypt.genSalt(10);
                     const hash = await bcrypt.hash(adminPassword, salt);
-                    db.run(`INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)`, 
-                    ['Administrator', adminEmail, hash, 'admin'], (err) => {
+                    const allPermissions = JSON.stringify(['manage_students', 'manage_videos', 'manage_codes', 'manage_admins', 'manage_requests']);
+                    db.run(`INSERT INTO users (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)`, 
+                    ['Administrator', adminEmail, hash, 'admin', allPermissions], (err) => {
                         if (err) {
                             console.error('Error creating default admin', err);
                         } else {
-                            console.log('Default administrator account created.');
+                            console.log('Default administrator account created with full permissions.');
                         }
+                    });
+                } else if (!row.permissions) {
+                    // Update existing admin if permissions column is empty
+                    const allPermissions = JSON.stringify(['manage_students', 'manage_videos', 'manage_codes', 'manage_admins', 'manage_requests']);
+                    db.run(`UPDATE users SET permissions = ? WHERE email = ?`, [allPermissions, adminEmail], (err) => {
+                        if (!err) console.log('Updated existing default admin with full permissions.');
                     });
                 }
             });

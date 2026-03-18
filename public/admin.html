@@ -207,36 +207,12 @@
         <!-- Page Header -->
         <div class="flex items-center justify-between mb-4 gap-2">
             <h2 data-i18n="nav_admin">Admin Panel</h2>
-            <div class="flex gap-2">
-                <a href="admin-videos.html" class="btn btn-primary">🎬 Manage Videos</a>
-                <a href="admin-students.html" class="btn btn-secondary">Manage Students</a>
+            <div class="flex gap-2" id="adminActionBtns">
+                <!-- Buttons injected by JS based on permissions -->
             </div>
         </div>
 
         <!-- Settings Panel -->
-        <div class="admin-code-settings">
-            <h3>⚙️ Code Generation Settings</h3>
-            <div class="admin-code-settings-row">
-                <div class="admin-settings-field">
-                    <label for="inputCodesBatch">Codes per Batch</label>
-                    <input type="number" id="inputCodesBatch" min="1" max="10000" value="500" placeholder="e.g. 500">
-                </div>
-                <div class="admin-settings-field">
-                    <label for="inputCoinsPerCode">Coins per Code</label>
-                    <input type="number" id="inputCoinsPerCode" min="1" max="100" value="1" placeholder="e.g. 1">
-                </div>
-                <div class="admin-settings-field">
-                    <label>&nbsp;</label>
-                    <button id="btnSaveSettings" class="btn btn-secondary btn-sm" style="height:fit-content; padding: 0.5rem 1rem;">💾 Save Settings</button>
-                </div>
-                <div class="admin-settings-field" style="margin-left: auto;">
-                    <label>&nbsp;</label>
-                    <button id="btnGenerate" class="btn btn-primary" style="height:fit-content;">
-                        ✨ Generate <span id="generateCountLabel">500</span> Codes
-                    </button>
-                </div>
-            </div>
-
             </div>
         </div>
 
@@ -281,16 +257,83 @@
             window.location.href = '/login.html';
         }
 
+        const perms = window.app.user.permissions || [];
+
+        function renderAdminHeader() {
+            const container = document.getElementById('adminActionBtns');
+            container.innerHTML = '';
+            if (perms.includes('manage_videos')) {
+                container.innerHTML += `<a href="admin-videos.html" class="btn btn-primary">🎬 Manage Videos</a>`;
+            }
+            if (perms.includes('manage_students')) {
+                container.innerHTML += `<a href="admin-students.html" class="btn btn-secondary">Manage Students</a>`;
+            }
+            if (perms.includes('manage_admins')) {
+                container.innerHTML += `<a href="admin-admins.html" class="btn btn-secondary" style="background:var(--secondary);border-color:var(--secondary);">👥 Manage Admins</a>`;
+            }
+        }
+
+        function renderSettingsPanel() {
+            if (perms.includes('manage_codes') || perms.includes('manage_admins')) {
+                const panel = document.createElement('div');
+                panel.className = 'admin-code-settings';
+                panel.innerHTML = `
+                    <h3>⚙️ Code Generation Settings</h3>
+                    <div class="admin-code-settings-row">
+                        ${perms.includes('manage_admins') ? `
+                        <div class="admin-settings-field">
+                            <label for="inputCodesBatch">Codes per Batch</label>
+                            <input type="number" id="inputCodesBatch" min="1" max="10000" value="500" placeholder="e.g. 500">
+                        </div>
+                        <div class="admin-settings-field">
+                            <label for="inputCoinsPerCode">Coins per Code</label>
+                            <input type="number" id="inputCoinsPerCode" min="1" max="100" value="1" placeholder="e.g. 1">
+                        </div>
+                        <div class="admin-settings-field">
+                            <label>&nbsp;</label>
+                            <button id="btnSaveSettings" class="btn btn-secondary btn-sm" style="height:fit-content; padding: 0.5rem 1rem;">💾 Save Settings</button>
+                        </div>
+                        ` : ''}
+                        ${perms.includes('manage_codes') ? `
+                        <div class="admin-settings-field" style="margin-left: auto;">
+                            <label>&nbsp;</label>
+                            <button id="btnGenerate" class="btn btn-primary" style="height:fit-content;">
+                                ✨ Generate <span id="generateCountLabel">500</span> Codes
+                            </button>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+                document.querySelector('.container.mt-8').insertBefore(panel, document.querySelector('.stats-grid'));
+                
+                if (perms.includes('manage_admins')) {
+                    document.getElementById('btnSaveSettings').addEventListener('click', saveSettings);
+                    document.getElementById('inputCodesBatch').addEventListener('input', function() {
+                        document.getElementById('generateCountLabel').textContent = this.value;
+                    });
+                }
+                if (perms.includes('manage_codes')) {
+                    document.getElementById('btnGenerate').addEventListener('click', generateCodes);
+                }
+            }
+        }
+
+        renderAdminHeader();
+        renderSettingsPanel();
+
         // ---- Load settings ----
         async function loadSettings() {
+            if (!perms.includes('manage_admins')) return;
             try {
                 const data = await window.app.apiCall('/admin/settings');
                 const s = data.settings;
                 const codesVal = parseInt(s.codes_per_batch || '500');
                 const coinsVal = parseInt(s.coins_per_code || '1');
-                document.getElementById('inputCodesBatch').value = codesVal;
-                document.getElementById('inputCoinsPerCode').value = coinsVal;
-                document.getElementById('generateCountLabel').textContent = codesVal;
+                if (document.getElementById('inputCodesBatch')) {
+                    document.getElementById('inputCodesBatch').value = codesVal;
+                    document.getElementById('inputCoinsPerCode').value = coinsVal;
+                    document.getElementById('generateCountLabel').textContent = codesVal;
+                }
             } catch (err) {
                 window.showNotification('Could not load settings: ' + err.message, 'error');
             }

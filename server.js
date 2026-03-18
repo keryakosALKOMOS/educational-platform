@@ -62,6 +62,26 @@ const requireAdmin = (req, res, next) => {
     }
 };
 
+const requirePermission = (permission) => {
+    return (req, res, next) => {
+        if (req.user && req.user.role === 'admin') {
+            // Need to fetch fresh permissions from DB or assume they are in token
+            // For security, let's fetch from DB to allow instant revocation
+            db.get(`SELECT permissions FROM users WHERE id = ?`, [req.user.id], (err, user) => {
+                if (err || !user) return res.status(403).json({ error: 'Access Denied' });
+                const perms = JSON.parse(user.permissions || '[]');
+                if (perms.includes(permission)) {
+                    next();
+                } else {
+                    return res.status(403).json({ error: `Missing permission: ${permission}` });
+                }
+            });
+        } else {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+    };
+};
+
 // =======================
 // AUTHENTICATION APIs
 // =======================
@@ -102,15 +122,17 @@ app.post('/api/auth/login', (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
 
-        const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-        res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, coins: user.coins } });
+        const permissions = JSON.parse(user.permissions || '[]');
+        const token = jwt.sign({ id: user.id, role: user.role, permissions }, JWT_SECRET, { expiresIn: '24h' });
+        res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, coins: user.coins, permissions } });
     });
 });
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
-    db.get(`SELECT id, name, email, role, coins FROM users WHERE id = ?`, [req.user.id], (err, user) => {
+    db.get(`SELECT id, name, email, role, coins, permissions FROM users WHERE id = ?`, [req.user.id], (err, user) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         if (!user) return res.status(404).json({ error: 'User not found' });
+        user.permissions = JSON.parse(user.permissions || '[]');
         res.json({ user });
     });
 });
@@ -152,17 +174,77 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
 });
 
 // =======================
+// ADMIN MANAGEMENT APIs
+// =======================
+
+app.get('/api/admin/admins', authenticateToken, requirePermission('manage_admins'), (req, res) => {
+    db.all(`SELECT id, name, email, role, permissions FROM users WHERE role = 'admin'`, (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        const admins = rows.map(r => ({ ...r, permissions: JSON.parse(r.permissions || '[]') }));
+        res.json({ admins });
+    });
+});
+
+app.post('/api/admin/admins', authenticateToken, requirePermission('manage_admins'), async (req, res) => {
+    const { name, email, password, permissions } = req.body;
+    if (!name || !email || !password || !permissions) return res.status(400).json({ error: 'All fields are required' });
+
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(password, salt);
+        const permsJson = JSON.stringify(permissions);
+
+        db.run(`INSERT INTO users (name, email, password, role, permissions) VALUES (?, ?, ?, 'admin', ?)`,
+        [name, email, hash, permsJson], function(err) {
+            if (err) return res.status(400).json({ error: 'Email already exists or database error' });
+            res.json({ message: 'Admin created successfully', id: this.lastID });
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.put('/api/admin/admins/:id', authenticateToken, requirePermission('manage_admins'), async (req, res) => {
+    const { name, email, permissions, password } = req.body;
+    const adminId = req.params.id;
+
+    if (password && password.trim() !== '') {
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(password, salt);
+        db.run(`UPDATE users SET name = ?, email = ?, password = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
+        [name, email, hash, JSON.stringify(permissions), adminId], function(err) {
+            if (err) return res.status(400).json({ error: 'Database error' });
+            res.json({ message: 'Admin updated successfully' });
+        });
+    } else {
+        db.run(`UPDATE users SET name = ?, email = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
+        [name, email, JSON.stringify(permissions), adminId], function(err) {
+            if (err) return res.status(400).json({ error: 'Database error' });
+            res.json({ message: 'Admin updated successfully' });
+        });
+    }
+});
+
+app.delete('/api/admin/admins/:id', authenticateToken, requirePermission('manage_admins'), (req, res) => {
+    const adminId = req.params.id;
+    db.run(`DELETE FROM users WHERE id = ? AND role = 'admin'`, [adminId], function(err) {
+        if (err) return res.status(400).json({ error: 'Database error' });
+        res.json({ message: 'Admin deleted successfully' });
+    });
+});
+
+// =======================
 // ADMIN STUDENTS APIs
 // =======================
 
-app.get('/api/students', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/admin/students', authenticateToken, requirePermission('manage_students'), (req, res) => {
     db.all(`SELECT id, name, email, coins, class_time FROM users WHERE role = 'student' ORDER BY id DESC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         res.json({ students: rows });
     });
 });
 
-app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/admin/students', authenticateToken, requirePermission('manage_students'), async (req, res) => {
     const { name, email, password, coins, class_time } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
     try {
@@ -178,7 +260,7 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
     }
 });
 
-app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.put('/api/admin/students/:id', authenticateToken, requirePermission('manage_students'), async (req, res) => {
     const { name, email, password, coins, class_time } = req.body;
     const studentId = req.params.id;
 
@@ -203,7 +285,7 @@ app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) =
     }
 });
 
-app.delete('/api/students/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/admin/students/:id', authenticateToken, requirePermission('manage_students'), (req, res) => {
     const studentId = req.params.id;
     db.serialize(() => {
         db.run('BEGIN TRANSACTION');
@@ -235,7 +317,7 @@ const generateRandomCode = () => {
     return result;
 };
 
-app.post('/api/codes/generate', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/codes/generate', authenticateToken, requirePermission('manage_codes'), (req, res) => {
     db.get(`SELECT value FROM app_settings WHERE key = 'codes_per_batch'`, [], (err, rowCount) => {
         db.get(`SELECT value FROM app_settings WHERE key = 'coins_per_code'`, [], (err2, rowCoins) => {
             const count = parseInt((rowCount && rowCount.value) || '500');
@@ -276,7 +358,7 @@ app.get('/api/codes', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Get all batches with stats
-app.get('/api/codes/batches', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/codes/batches', authenticateToken, requirePermission('manage_codes'), (req, res) => {
     db.all(`
         SELECT
             b.id,
@@ -296,7 +378,7 @@ app.get('/api/codes/batches', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Get all codes for a specific batch (for printing)
-app.get('/api/codes/batch/:id', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/codes/batch/:id', authenticateToken, requirePermission('manage_codes'), (req, res) => {
     const batchId = req.params.id;
     db.all(`SELECT * FROM codes WHERE batch_id = ? ORDER BY id ASC`, [batchId], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Database error' });
@@ -333,7 +415,7 @@ app.post('/api/codes/redeem', redeemLimiter, authenticateToken, (req, res) => {
 // ADMIN SETTINGS APIs
 // =======================
 
-app.get('/api/admin/settings', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/admin/settings', authenticateToken, requirePermission('manage_admins'), (req, res) => {
     db.all(`SELECT key, value FROM app_settings`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         const settings = {};
@@ -342,7 +424,7 @@ app.get('/api/admin/settings', authenticateToken, requireAdmin, (req, res) => {
     });
 });
 
-app.put('/api/admin/settings', authenticateToken, requireAdmin, (req, res) => {
+app.put('/api/admin/settings', authenticateToken, requirePermission('manage_admins'), (req, res) => {
     const { codes_per_batch, coins_per_code } = req.body;
     const codesVal = parseInt(codes_per_batch);
     const coinsVal = parseInt(coins_per_code);
@@ -364,7 +446,7 @@ app.put('/api/admin/settings', authenticateToken, requireAdmin, (req, res) => {
     });
 });
 
-app.get('/api/admin/video-prices', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/admin/video-prices', authenticateToken, requirePermission('manage_videos'), (req, res) => {
     const grades = ['grade1', 'grade2', 'grade3'];
     let allVideos = [];
     
@@ -397,7 +479,7 @@ app.get('/api/admin/video-prices', authenticateToken, requireAdmin, (req, res) =
     });
 });
 
-app.put('/api/admin/video-prices', authenticateToken, requireAdmin, (req, res) => {
+app.put('/api/admin/video-prices', authenticateToken, requirePermission('manage_videos'), (req, res) => {
     const { updates } = req.body; // Array of { video_path, price }
     if (!Array.isArray(updates)) return res.status(400).json({ error: 'Updates must be an array' });
 
