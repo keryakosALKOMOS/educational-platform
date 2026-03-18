@@ -236,24 +236,69 @@ const generateRandomCode = () => {
 };
 
 app.post('/api/codes/generate', authenticateToken, requireAdmin, (req, res) => {
-    db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-        const stmt = db.prepare('INSERT INTO codes (code) VALUES (?)');
-        
-        for (let i = 0; i < 500; i++) {
-            stmt.run(generateRandomCode());
-        }
-        
-        stmt.finalize();
-        db.run('COMMIT', (err) => {
-            if (err) return res.status(500).json({ error: 'Error generating codes' });
-            res.json({ message: '500 codes generated successfully' });
+    db.get(`SELECT value FROM app_settings WHERE key = 'codes_per_batch'`, [], (err, rowCount) => {
+        db.get(`SELECT value FROM app_settings WHERE key = 'coins_per_code'`, [], (err2, rowCoins) => {
+            const count = parseInt((rowCount && rowCount.value) || '500');
+            const coinsPerCode = parseInt((rowCoins && rowCoins.value) || '1');
+            const now = new Date().toISOString();
+
+            // Create the batch record first
+            db.run(
+                `INSERT INTO code_batches (created_at, count, coins_per_code) VALUES (?, ?, ?)`,
+                [now, count, coinsPerCode],
+                function(batchErr) {
+                    if (batchErr) return res.status(500).json({ error: 'Error creating batch' });
+                    const batchId = this.lastID;
+
+                    db.serialize(() => {
+                        db.run('BEGIN TRANSACTION');
+                        const stmt = db.prepare('INSERT OR IGNORE INTO codes (code, batch_id) VALUES (?, ?)');
+                        for (let i = 0; i < count; i++) {
+                            stmt.run(generateRandomCode(), batchId);
+                        }
+                        stmt.finalize();
+                        db.run('COMMIT', (commitErr) => {
+                            if (commitErr) return res.status(500).json({ error: 'Error generating codes' });
+                            res.json({ message: `${count} codes generated successfully`, count, batch_id: batchId });
+                        });
+                    });
+                }
+            );
         });
     });
 });
 
 app.get('/api/codes', authenticateToken, requireAdmin, (req, res) => {
     db.all(`SELECT * FROM codes ORDER BY id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ codes: rows });
+    });
+});
+
+// Get all batches with stats
+app.get('/api/codes/batches', authenticateToken, requireAdmin, (req, res) => {
+    db.all(`
+        SELECT
+            b.id,
+            b.created_at,
+            b.count,
+            b.coins_per_code,
+            COUNT(CASE WHEN c.is_used = 1 THEN 1 END) AS used_count,
+            COUNT(CASE WHEN c.is_used = 0 THEN 1 END) AS available_count
+        FROM code_batches b
+        LEFT JOIN codes c ON c.batch_id = b.id
+        GROUP BY b.id
+        ORDER BY b.id DESC
+    `, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ batches: rows });
+    });
+});
+
+// Get all codes for a specific batch (for printing)
+app.get('/api/codes/batch/:id', authenticateToken, requireAdmin, (req, res) => {
+    const batchId = req.params.id;
+    db.all(`SELECT * FROM codes WHERE batch_id = ? ORDER BY id ASC`, [batchId], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         res.json({ codes: rows });
     });
@@ -268,15 +313,102 @@ app.post('/api/codes/redeem', redeemLimiter, authenticateToken, (req, res) => {
         if (!row) return res.status(404).json({ error: 'Code does not exist' });
         if (row.is_used) return res.status(400).json({ error: 'Code already used' });
 
-        const now = new Date().toISOString();
-        db.run(`UPDATE codes SET is_used = 1, used_by = ?, used_at = ? WHERE id = ?`, 
-        [req.user.id, now, row.id], function(err) {
-            if (err) return res.status(500).json({ error: 'Database error' });
-
-            db.run(`UPDATE users SET coins = coins + 1 WHERE id = ?`, [req.user.id], function(err) {
+        db.get(`SELECT value FROM app_settings WHERE key = 'coins_per_code'`, [], (err, setting) => {
+            const coinsToAdd = parseInt((setting && setting.value) || '1');
+            const now = new Date().toISOString();
+            db.run(`UPDATE codes SET is_used = 1, used_by = ?, used_at = ? WHERE id = ?`,
+            [req.user.id, now, row.id], function(err) {
                 if (err) return res.status(500).json({ error: 'Database error' });
-                res.json({ message: 'Code redeemed successfully, 1 coin added!' });
+
+                db.run(`UPDATE users SET coins = coins + ? WHERE id = ?`, [coinsToAdd, req.user.id], function(err) {
+                    if (err) return res.status(500).json({ error: 'Database error' });
+                    res.json({ message: `Code redeemed successfully, ${coinsToAdd} coin(s) added!`, coins_added: coinsToAdd });
+                });
             });
+        });
+    });
+});
+
+// =======================
+// ADMIN SETTINGS APIs
+// =======================
+
+app.get('/api/admin/settings', authenticateToken, requireAdmin, (req, res) => {
+    db.all(`SELECT key, value FROM app_settings`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        const settings = {};
+        rows.forEach(r => { settings[r.key] = r.value; });
+        res.json({ settings });
+    });
+});
+
+app.put('/api/admin/settings', authenticateToken, requireAdmin, (req, res) => {
+    const { codes_per_batch, coins_per_code } = req.body;
+    const codesVal = parseInt(codes_per_batch);
+    const coinsVal = parseInt(coins_per_code);
+
+    if (isNaN(codesVal) || codesVal < 1 || codesVal > 10000)
+        return res.status(400).json({ error: 'codes_per_batch must be between 1 and 10000' });
+    if (isNaN(coinsVal) || coinsVal < 1 || coinsVal > 100)
+        return res.status(400).json({ error: 'coins_per_code must be between 1 and 100' });
+
+    db.serialize(() => {
+        db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('codes_per_batch', ?)`, [codesVal.toString()]);
+        db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('coins_per_code', ?)`, [coinsVal.toString()], (err) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({
+                message: 'Settings updated successfully',
+                settings: { codes_per_batch: codesVal, coins_per_code: coinsVal }
+            });
+        });
+    });
+});
+
+app.get('/api/admin/video-prices', authenticateToken, requireAdmin, (req, res) => {
+    const grades = ['grade1', 'grade2', 'grade3'];
+    let allVideos = [];
+    
+    grades.forEach(grade => {
+        const dirPath = path.join(__dirname, 'videos', grade);
+        if (fs.existsSync(dirPath)) {
+            const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.mp4') || f.endsWith('.mkv'));
+            files.forEach(f => {
+                allVideos.push({
+                    video_path: `${grade}/${f}`,
+                    title: f,
+                    grade: grade
+                });
+            });
+        }
+    });
+
+    db.all(`SELECT * FROM video_prices`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        
+        const priceMap = {};
+        rows.forEach(r => priceMap[r.video_path] = r.price);
+        
+        const result = allVideos.map(v => ({
+            ...v,
+            price: priceMap[v.video_path] || 1
+        }));
+        
+        res.json({ videos: result });
+    });
+});
+
+app.put('/api/admin/video-prices', authenticateToken, requireAdmin, (req, res) => {
+    const { updates } = req.body; // Array of { video_path, price }
+    if (!Array.isArray(updates)) return res.status(400).json({ error: 'Updates must be an array' });
+
+    db.serialize(() => {
+        const stmt = db.prepare(`INSERT OR REPLACE INTO video_prices (video_path, price) VALUES (?, ?)`);
+        updates.forEach(u => {
+            stmt.run(u.video_path, parseInt(u.price || 1));
+        });
+        stmt.finalize((err) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ message: 'Video prices updated successfully' });
         });
     });
 });
@@ -312,32 +444,39 @@ app.get('/api/videos/:grade', authenticateToken, (req, res) => {
     }
 
     const dirPath = path.join(__dirname, 'videos', grade);
+    if (!fs.existsSync(dirPath)) {
+        return res.json({ videos: [] });
+    }
+
     fs.readdir(dirPath, (err, files) => {
         if (err) return res.status(500).json({ error: 'Error reading videos directory' });
-        
+
         const videoFiles = files.filter(file => file.endsWith('.mp4') || file.endsWith('.mkv'));
-        
+
         db.all(`SELECT video_path, last_position FROM unlocked_videos WHERE user_id = ?`, [req.user.id], (err, unlockedRows) => {
             if (err) return res.status(500).json({ error: 'Database error' });
 
             const unlockedMap = {};
-            unlockedRows.forEach(row => {
-                unlockedMap[row.video_path] = row.last_position;
-            });
+            unlockedRows.forEach(row => unlockedMap[row.video_path] = row.last_position);
 
-            const result = videoFiles.map(file => {
-                const videoPath = `${grade}/${file}`;
-                return {
-                    id: Buffer.from(videoPath).toString('hex'),
-                    title: file,
-                    fileName: file,
-                    grade: grade,
-                    isUnlocked: !!unlockedMap[videoPath],
-                    lastPosition: unlockedMap[videoPath] || 0
-                };
-            });
+            db.all(`SELECT * FROM video_prices`, [], (err, priceRows) => {
+                const priceMap = {};
+                priceRows.forEach(r => priceMap[r.video_path] = r.price);
 
-            res.json({ videos: result });
+                const result = videoFiles.map(file => {
+                    const videoPath = `${grade}/${file}`;
+                    return {
+                        id: Buffer.from(videoPath).toString('hex'),
+                        title: file,
+                        fileName: file,
+                        grade: grade,
+                        price: priceMap[videoPath] || 1,
+                        isUnlocked: !!unlockedMap[videoPath],
+                        lastPosition: unlockedMap[videoPath] || 0
+                    };
+                });
+                res.json({ videos: result });
+            });
         });
     });
 });
@@ -348,23 +487,24 @@ app.post('/api/videos/unlock', authenticateToken, (req, res) => {
 
     const videoPath = Buffer.from(videoId, 'hex').toString('utf8');
 
-    db.get(`SELECT coins FROM users WHERE id = ?`, [req.user.id], (err, user) => {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        if (user.coins < 1) return res.status(400).json({ error: 'Not enough coins' });
+    db.get(`SELECT price FROM video_prices WHERE video_path = ?`, [videoPath], (err, priceRow) => {
+        const price = (priceRow && priceRow.price) !== undefined ? priceRow.price : 1;
 
-        db.get(`SELECT * FROM unlocked_videos WHERE user_id = ? AND video_path = ?`, [req.user.id, videoPath], (err, unlocked) => {
+        db.get(`SELECT coins FROM users WHERE id = ?`, [req.user.id], (err, user) => {
             if (err) return res.status(500).json({ error: 'Database error' });
-            if (unlocked) return res.status(400).json({ error: 'Video already unlocked' });
+            if (user.coins < price) return res.status(400).json({ error: `Not enough coins. This video costs ${price} coin(s).` });
 
-            db.run(`UPDATE users SET coins = coins - 1 WHERE id = ?`, [req.user.id], function(err) {
+            db.get(`SELECT * FROM unlocked_videos WHERE user_id = ? AND video_path = ?`, [req.user.id, videoPath], (err, unlocked) => {
                 if (err) return res.status(500).json({ error: 'Database error' });
+                if (unlocked) return res.status(400).json({ error: 'Video already unlocked' });
 
-                db.run(`INSERT INTO unlocked_videos (user_id, video_path) VALUES (?, ?)`, [req.user.id, videoPath], function(err) {
-                    if (err) {
-                        // Rollback logic could be implemented here, but ignoring for simplicity
-                        return res.status(500).json({ error: 'Database error' });
-                    }
-                    res.json({ message: 'Video unlocked successfully' });
+                db.run(`UPDATE users SET coins = coins - ? WHERE id = ?`, [price, req.user.id], function(err) {
+                    if (err) return res.status(500).json({ error: 'Database error' });
+
+                    db.run(`INSERT INTO unlocked_videos (user_id, video_path) VALUES (?, ?)`, [req.user.id, videoPath], function(err) {
+                        if (err) return res.status(500).json({ error: 'Database error' });
+                        res.json({ message: `Video unlocked successfully! ${price} coin(s) deducted.` });
+                    });
                 });
             });
         });

@@ -52,6 +52,41 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )`);
 
+            // Create App Settings table
+            db.run(`CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )`, (err) => {
+                if (!err) {
+                    // Insert defaults if not already present
+                    db.run(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('codes_per_batch', '500')`);
+                    db.run(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('coins_per_code', '1')`);
+                }
+            });
+
+            // Create Video Prices table
+            db.run(`CREATE TABLE IF NOT EXISTS video_prices (
+                video_path TEXT PRIMARY KEY,
+                price INTEGER NOT NULL DEFAULT 1
+            )`);
+
+            // Create Code Batches table
+            db.run(`CREATE TABLE IF NOT EXISTS code_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at DATETIME NOT NULL,
+                count INTEGER NOT NULL,
+                coins_per_code INTEGER NOT NULL DEFAULT 1
+            )`);
+
+            // Migrate codes table: add batch_id column if missing
+            db.run(`ALTER TABLE codes ADD COLUMN batch_id INTEGER REFERENCES code_batches(id)`, (err) => {
+                if (err && !err.message.includes('duplicate column name')) {
+                    console.error('Migration error adding batch_id:', err);
+                } else if (!err) {
+                    console.log('Migration complete: Added batch_id to codes table.');
+                }
+            });
+
             // Check and insert default admin
             const adminEmail = process.env.ADMIN_EMAIL || 'admin@admin.com';
             const adminPassword = process.env.ADMIN_PASSWORD || 'adminpassword';

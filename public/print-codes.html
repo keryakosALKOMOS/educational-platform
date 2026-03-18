@@ -14,6 +14,11 @@
             margin-bottom: 20px;
             text-align: center;
         }
+        .controls h2 {
+            font-family: sans-serif;
+            margin-bottom: 12px;
+            color: #1e293b;
+        }
         button {
             padding: 10px 20px;
             font-size: 16px;
@@ -22,7 +27,9 @@
             color: white;
             border: none;
             border-radius: 4px;
+            margin: 0 4px;
         }
+        button.close-btn { background: #ef4444; }
         /* A4 Page Layout */
         .page {
             width: 210mm;
@@ -47,6 +54,13 @@
             letter-spacing: 2px;
             page-break-inside: avoid;
         }
+        .code-box small {
+            display: block;
+            font-size: 10px;
+            color: #999;
+            letter-spacing: 0;
+            margin-top: 4px;
+        }
         @media print {
             body { background: white; padding: 0; }
             .controls { display: none; }
@@ -57,47 +71,70 @@
 <body>
 
     <div class="controls">
-        <button onclick="window.print()">Print Codes (A4)</button>
-        <button onclick="window.close()" style="background: #ef4444; margin-left: 10px;">Close</button>
+        <h2 id="pageTitle">Print Codes (A4)</h2>
+        <button onclick="window.print()">🖨 Print</button>
+        <button class="close-btn" onclick="window.close()">✕ Close</button>
     </div>
 
     <div class="page" id="printPage">
         <div class="grid" id="codesGrid">
-            Loading...
+            Loading…
         </div>
     </div>
 
     <script src="js/app.js"></script>
     <script>
         if (!window.app.token || window.app.user?.role !== 'admin') {
-            document.body.innerHTML = '<h1>Access Denied. Admins only.</h1>';
+            document.body.innerHTML = '<h1 style="text-align:center;color:red;">Access Denied. Admins only.</h1>';
         } else {
-            loadUnusedCodes();
+            const params = new URLSearchParams(window.location.search);
+            const batchId = params.get('batch');
+
+            if (batchId) {
+                document.title = `Print Batch #${batchId} - Educational Platform`;
+                document.getElementById('pageTitle').textContent = `Batch #${batchId} — Available Codes`;
+                loadBatchCodes(batchId);
+            } else {
+                document.getElementById('pageTitle').textContent = 'All Available Codes';
+                loadAllUnusedCodes();
+            }
         }
 
-        async function loadUnusedCodes() {
+        async function loadBatchCodes(batchId) {
             try {
-                const data = await window.app.apiCall('/codes');
+                const data = await window.app.apiCall('/codes/batch/' + batchId);
                 const unused = data.codes.filter(c => !c.is_used);
-                
-                const grid = document.getElementById('codesGrid');
-                grid.innerHTML = '';
-                
-                if (unused.length === 0) {
-                    grid.innerHTML = '<div style="grid-column: span 4; text-align: center;">No unused codes available.</div>';
-                    return;
-                }
-
-                // Append up to 500
-                unused.slice(0, 500).forEach(code => {
-                    const div = document.createElement('div');
-                    div.className = 'code-box';
-                    div.textContent = code.code;
-                    grid.appendChild(div);
-                });
+                renderCodes(unused, `Batch #${batchId}`);
             } catch (err) {
                 alert('Error loading codes: ' + err.message);
             }
+        }
+
+        async function loadAllUnusedCodes() {
+            try {
+                const data = await window.app.apiCall('/codes');
+                const unused = data.codes.filter(c => !c.is_used);
+                renderCodes(unused.slice(0, 500), null);
+            } catch (err) {
+                alert('Error loading codes: ' + err.message);
+            }
+        }
+
+        function renderCodes(codes, batchLabel) {
+            const grid = document.getElementById('codesGrid');
+            grid.innerHTML = '';
+
+            if (codes.length === 0) {
+                grid.innerHTML = '<div style="grid-column: span 4; text-align: center; font-family: sans-serif; color: #999;">No available codes found.</div>';
+                return;
+            }
+
+            codes.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'code-box';
+                div.innerHTML = c.code + (batchLabel ? `<small>${batchLabel}</small>` : '');
+                grid.appendChild(div);
+            });
         }
     </script>
 </body>
