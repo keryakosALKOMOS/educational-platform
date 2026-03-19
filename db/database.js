@@ -31,6 +31,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
             db.run(`ALTER TABLE users ADD COLUMN permissions TEXT`, (err) => {
                 if (err && !err.message.includes("duplicate column name")) console.error("Migration error adding permissions:", err);
             });
+            db.run(`ALTER TABLE users ADD COLUMN push_subscription TEXT`, (err) => {
+                if (err && !err.message.includes("duplicate column name")) console.error("Migration error adding push_subscription:", err);
+            });
 
             // Normalize all existing emails to lowercase
             db.run(`UPDATE users SET email = LOWER(email)`, (err) => {

@@ -11,6 +11,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const webpush = require('web-push');
 
 const uploadsDir = path.join(__dirname, 'tmp', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -24,6 +25,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 const SUPER_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@admin.com').toLowerCase();
+
+let vapidKeys;
+const vapidPath = path.join(__dirname, 'db', 'vapid.json');
+if (fs.existsSync(vapidPath)) {
+    vapidKeys = JSON.parse(fs.readFileSync(vapidPath, 'utf8'));
+} else {
+    vapidKeys = webpush.generateVAPIDKeys();
+    fs.writeFileSync(vapidPath, JSON.stringify(vapidKeys));
+}
+const mailtoUrl = SUPER_ADMIN_EMAIL.includes('@') ? `mailto:${SUPER_ADMIN_EMAIL}` : 'mailto:admin@example.com';
+webpush.setVapidDetails(mailtoUrl, vapidKeys.publicKey, vapidKeys.privateKey);
 
 // Middleware
 app.use(cors());
@@ -160,6 +172,19 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
     let { name, email, password, class_time } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
     email = email.toLowerCase();
+
+    // Endpoints for push notifications
+    app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+        const subscription = req.body;
+        db.run(`UPDATE users SET push_subscription = ? WHERE id = ?`, [JSON.stringify(subscription), req.user.id], function(err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.status(201).json({ message: 'Subscribed securely' });
+        });
+    });
+
+    app.get('/api/push/public-key', (req, res) => {
+        res.json({ publicKey: vapidKeys.publicKey });
+    });
 
     if (password && password.trim() !== '') {
         try {
@@ -798,6 +823,26 @@ app.post('/api/admin/exams', authenticateToken, requirePermission('manage_exams'
             }
             
             const examId = this.lastID;
+            
+            // Notify students asynchronously
+            db.all(`SELECT push_subscription FROM users WHERE role = 'student' AND push_subscription IS NOT NULL`, [], (err, students) => {
+                if (!err && students.length > 0) {
+                    const payload = JSON.stringify({
+                        title: 'New Exam Available!',
+                        body: `Exam "${title}" has been published.`,
+                        url: '/student-exams.html'
+                    });
+                    
+                    students.forEach(student => {
+                        try {
+                            const sub = JSON.parse(student.push_subscription);
+                            if (sub && sub.endpoint) {
+                                webpush.sendNotification(sub, payload).catch(e => {});
+                            }
+                        } catch (e) {}
+                    });
+                }
+            });
             const stmt = db.prepare(`INSERT INTO questions (exam_id, question_text, option_a, option_b, option_c, option_d, correct_option) VALUES (?, ?, ?, ?, ?, ?, ?)`);
             
             for (let q of questions) {

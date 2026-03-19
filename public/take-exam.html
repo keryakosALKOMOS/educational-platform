@@ -74,6 +74,22 @@
                     form.appendChild(card);
                 });
 
+                // Restore saved answers from localStorage
+                const savedAnswers = JSON.parse(localStorage.getItem(`exam_${examId}_answers`) || '{}');
+                for (let name in savedAnswers) {
+                    const radio = form.querySelector(`input[name="${name}"][value="${savedAnswers[name]}"]`);
+                    if (radio) radio.checked = true;
+                }
+
+                // Auto-save answers on change
+                form.addEventListener('change', (e) => {
+                    if (e.target.type === 'radio') {
+                        const answers = JSON.parse(localStorage.getItem(`exam_${examId}_answers`) || '{}');
+                        answers[e.target.name] = e.target.value;
+                        localStorage.setItem(`exam_${examId}_answers`, JSON.stringify(answers));
+                    }
+                });
+
                 const endTimestampByDuration = new Date().getTime() + (exam.duration_minutes * 60 * 1000);
                 const absoluteEndTimestamp = new Date(exam.end_time).getTime();
                 
@@ -125,6 +141,25 @@
             submitExam();
         }
 
+        async function doSubmit(answers) {
+            try {
+                const res = await window.app.apiCall(`/student/exams/${examId}/submit`, 'POST', { answers });
+                document.getElementById('examHeader').style.display = 'none';
+                document.getElementById('examContent').style.display = 'none';
+                document.getElementById('resultContent').style.display = 'block';
+                document.getElementById('scoreDisplay').textContent = `Your Score: ${res.score} / ${res.total}`;
+                
+                // Clear auto-saved items
+                localStorage.removeItem(`exam_${examId}_answers`);
+                localStorage.removeItem(`exam_${examId}_pending`);
+            } catch (err) {
+                document.getElementById('btnSubmit').disabled = false;
+                document.getElementById('btnSubmit').textContent = 'Submit Exam';
+                isSubmitted = false;
+                window.showNotification(err.message, 'error');
+            }
+        }
+
         async function submitExam() {
             if (isSubmitted) return;
             isSubmitted = true;
@@ -141,18 +176,21 @@
                 }
             }
 
-            try {
-                const res = await window.app.apiCall(`/student/exams/${examId}/submit`, 'POST', { answers });
-                document.getElementById('examHeader').style.display = 'none';
-                document.getElementById('examContent').style.display = 'none';
-                document.getElementById('resultContent').style.display = 'block';
-                document.getElementById('scoreDisplay').textContent = `Your Score: ${res.score} / ${res.total}`;
-            } catch (err) {
-                document.getElementById('btnSubmit').disabled = false;
-                document.getElementById('btnSubmit').textContent = 'Submit Exam';
-                isSubmitted = false;
-                window.showNotification(err.message, 'error');
+            if (!navigator.onLine) {
+                localStorage.setItem(`exam_${examId}_pending`, JSON.stringify(answers));
+                document.getElementById('btnSubmit').textContent = 'Offline (Saved)';
+                document.getElementById('btnSubmit').style.backgroundColor = 'var(--text-muted)';
+                window.showNotification('You are offline. Answers are saved locally and will be submitted automatically when your connection is restored.', 'warning');
+                
+                window.addEventListener('online', async function syncOnline() {
+                    window.showNotification('Back online! Submitting exam...', 'success');
+                    window.removeEventListener('online', syncOnline);
+                    await doSubmit(answers);
+                });
+                return;
             }
+
+            await doSubmit(answers);
         }
 
         initExam();

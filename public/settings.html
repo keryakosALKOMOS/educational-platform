@@ -42,6 +42,10 @@
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                         <span data-i18n="settings_appearance">Appearance</span>
                     </button>
+                    <button class="settings-nav-item" data-panel="install" id="nav-install">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <span>Install App</span>
+                    </button>
                 </div>
             </aside>
 
@@ -128,6 +132,31 @@
                         <div class="palette-swatch" data-palette="violet" onclick="selectPalette('violet')">
                             <div class="palette-swatch-circle" style="background: linear-gradient(135deg, #7c3aed, #ec4899);"></div>
                             <span>Violet</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Install App Panel -->
+                <div class="settings-panel card" id="panel-install">
+                    <h2 class="settings-section-title">Install & Notifications</h2>
+                    <p class="settings-section-subtitle">Install the app on your phone and enable alerts for new exams 🚀</p>
+                    
+                    <div id="pwaInstallGuide" style="margin-top: 1.5rem; margin-bottom: 2rem;">
+                        <!-- JS injects instructions here -->
+                    </div>
+
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                        <div class="pwa-install-section" style="display: none; flex: 1; min-width: 200px;">
+                            <button class="btn btn-primary w-full" id="btnInstallApp" onclick="window.installPWA()" style="min-height: 44px; font-size: 1.1rem; padding: 10px;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; vertical-align: middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Install Now
+                            </button>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <button class="btn btn-secondary w-full" onclick="window.requestPushPermission()" style="min-height: 44px; font-size: 1.1rem; padding: 10px;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                                Enable Notifications
+                            </button>
                         </div>
                     </div>
                 </div>

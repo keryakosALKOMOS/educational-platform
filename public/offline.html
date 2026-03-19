@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Educational Platform</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .offline-container {
+            min-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+        }
+        .offline-icon {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; transform: scale(0.95); }
+            50% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0.6; transform: scale(0.95); }
+        }
+    </style>
+</head>
+<body data-auth="guest">
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform
+            </a>
+        </div>
+    </nav>
+    <div class="container offline-container fade-in">
+        <svg class="offline-icon" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 1l22 22"></path>
+            <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"></path>
+            <path d="M8.5 2.5L12 6"></path>
+            <path d="M17.5 2.5L21 6"></path>
+            <path d="M12 22v-4"></path>
+            <path d="M22 17v-8a2 2 0 0 0-2-2h-3.5"></path>
+            <path d="M12 9v4"></path>
+        </svg>
+        <h1>You are offline</h1>
+        <p style="color: var(--text-muted); max-width: 400px; margin: 1rem auto;">
+            It seems you've lost your internet connection. We saved some of your pages so you can still view them, but this page requires a connection.
+        </p>
+        <button onclick="window.location.reload()" class="btn btn-primary" style="margin-top: 2rem; min-height: 44px; padding: 0 2rem;">
+            Retry Connection
+        </button>
+    </div>
+</body>
+</html>
