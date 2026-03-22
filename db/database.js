@@ -132,6 +132,16 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 ended_at DATETIME
             )`);
 
+            // Create Messages table
+            db.run(`CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                is_read BOOLEAN DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )`);
+
             // Create Code Batches table
             db.run(`CREATE TABLE IF NOT EXISTS code_batches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,13 +150,10 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 coins_per_code INTEGER NOT NULL DEFAULT 1
             )`);
 
-            // Migrate codes table: add batch_id column if missing
-            db.run(`ALTER TABLE codes ADD COLUMN batch_id INTEGER REFERENCES code_batches(id)`, (err) => {
-                if (err && !err.message.includes('duplicate column name')) {
-                    console.error('Migration error adding batch_id:', err);
-                } else if (!err) {
-                    console.log('Migration complete: Added batch_id to codes table.');
-                }
+            db.run(`ALTER TABLE messages ADD COLUMN user_id_temp TEXT`, (err) => {
+                // This is a complex migration in SQLite, but for now we just ensure it can store TEXT
+                // and we'll change the column type informally by just using it as TEXT.
+                // SQLite technically allows this anyway, but let's be aware.
             });
 
             // Check and insert default admin
@@ -163,11 +170,13 @@ const db = new sqlite3.Database(dbPath, (err) => {
                     const hash = await bcrypt.hash(adminPassword, salt);
                     const allPermissions = JSON.stringify(['manage_students', 'manage_videos', 'manage_codes', 'manage_admins', 'manage_requests', 'manage_exams']);
                     db.run(`INSERT INTO users (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)`, 
-                    ['Administrator', adminEmail, hash, 'admin', allPermissions], (err) => {
+                    ['Administrator', adminEmail, hash, 'admin', allPermissions], function(err) {
                         if (err) {
                             console.error('Error creating default admin', err);
                         } else {
                             console.log('Default administrator account created with full permissions.');
+                            // We'll let server.js handle the Firestore sync for this one-time setup
+                            // by emitting an event or just checking on startup in server.js
                         }
                     });
                 } else if (!row.permissions || !row.permissions.includes('manage_exams')) {

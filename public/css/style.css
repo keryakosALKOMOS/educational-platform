@@ -657,3 +657,100 @@ a:hover {
 .toast.success { border-left: 4px solid var(--success); }
 .toast.error   { border-left: 4px solid var(--error); }
 
+/* Messaging System */
+.msg-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface-hover);
+    color: var(--text-main);
+    transition: all 0.2s;
+}
+.msg-btn:hover {
+    background: var(--primary);
+    color: white;
+}
+.msg-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background: var(--error);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--surface);
+    display: none;
+}
+.msg-badge.active { display: flex; }
+
+.messages-modal {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+}
+.messages-modal.active { display: flex; }
+.messages-content {
+    background: var(--surface);
+    width: 95%;
+    max-width: 500px;
+    border-radius: var(--radius);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+}
+.messages-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.messages-body {
+    padding: 1rem;
+    overflow-y: auto;
+    flex: 1;
+}
+.message-item {
+    padding: 1rem;
+    border-radius: 8px;
+    background: var(--surface-hover);
+    margin-bottom: 0.75rem;
+    border: 1px solid transparent;
+}
+.message-item.unread {
+    border-left: 4px solid var(--primary);
+    background: rgba(79, 70, 229, 0.05);
+}
+.message-text {
+    font-size: 0.95rem;
+    color: var(--text-main);
+    word-break: break-word;
+}
+.message-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+.empty-messages {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--text-muted);
+}
+

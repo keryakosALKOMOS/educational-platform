@@ -126,8 +126,24 @@
             }, 1000);
         }
 
-        document.getElementById('btnSubmit').addEventListener('click', () => {
-            if (confirm('Are you sure you want to submit? You cannot change your answers.')) {
+        const btnSubmit = document.getElementById('btnSubmit');
+        let submitConfirmState = false;
+
+        btnSubmit.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!submitConfirmState) {
+                submitConfirmState = true;
+                btnSubmit.textContent = 'Are you sure? Click again to confirm submit.';
+                btnSubmit.style.backgroundColor = 'var(--error)';
+                
+                setTimeout(() => {
+                    if (!isSubmitted) {
+                        submitConfirmState = false;
+                        btnSubmit.textContent = 'Submit Exam';
+                        btnSubmit.style.backgroundColor = '';
+                    }
+                }, 4000);
+            } else {
                 submitExam();
             }
         });

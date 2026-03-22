@@ -12,6 +12,30 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const webpush = require('web-push');
+const admin = require('firebase-admin');
+
+// Initialize Firebase Admin
+let firestore = null;
+try {
+    if (fs.existsSync('./firebase-service-account.json')) {
+        const serviceAccount = require('./firebase-service-account.json');
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        firestore = admin.firestore();
+        console.log('Firebase Admin initialized successfully using service account JSON.');
+    } else if (process.env.FIREBASE_PROJECT_ID) {
+        admin.initializeApp({
+            projectId: process.env.FIREBASE_PROJECT_ID
+        });
+        firestore = admin.firestore();
+        console.log('Firebase Admin initialized for project:', process.env.FIREBASE_PROJECT_ID);
+    } else {
+        console.warn('Firebase credentials not found. Firebase features will be disabled.');
+    }
+} catch (err) {
+    console.error('Error initializing Firebase Admin:', err.message);
+}
 
 const uploadsDir = path.join(__dirname, 'tmp', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -88,17 +112,39 @@ const requireAdmin = (req, res, next) => {
 const requirePermission = (permission) => {
     return (req, res, next) => {
         if (req.user && req.user.role === 'admin') {
-            // Need to fetch fresh permissions from DB or assume they are in token
-            // For security, let's fetch from DB to allow instant revocation
-            db.get(`SELECT permissions FROM users WHERE id = ?`, [req.user.id], (err, user) => {
-                if (err || !user) return res.status(403).json({ error: 'Access Denied' });
-                const perms = JSON.parse(user.permissions || '[]');
-                if (perms.includes(permission)) {
-                    next();
-                } else {
-                    return res.status(403).json({ error: `Missing permission: ${permission}` });
-                }
-            });
+            if (firestore) {
+                // Fetch from Firestore
+                firestore.collection('users').doc(req.user.id.toString()).get()
+                    .then(doc => {
+                        let perms;
+                        if (doc.exists) {
+                            perms = doc.data().permissions || [];
+                        } else {
+                            perms = req.user.permissions || [];
+                        }
+                        
+                        if (perms.includes(permission)) {
+                            next();
+                        } else {
+                            return res.status(403).json({ error: `Missing permission: ${permission}` });
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Firestore permission error:', err);
+                        res.status(500).json({ error: 'Database error' });
+                    });
+            } else {
+                // Fallback to SQLite
+                db.get(`SELECT permissions FROM users WHERE id = ?`, [req.user.id], (err, user) => {
+                    if (err || !user) return res.status(403).json({ error: 'Access Denied' });
+                    const perms = typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (user.permissions || []);
+                    if (perms.includes(permission)) {
+                        next();
+                    } else {
+                        return res.status(403).json({ error: `Missing permission: ${permission}` });
+                    }
+                });
+            }
         } else {
             return res.status(403).json({ error: 'Admin access required' });
         }
@@ -129,8 +175,23 @@ app.post('/api/auth/register', async (req, res) => {
                 return res.status(500).json({ error: 'Database error' });
             }
             
-            const token = jwt.sign({ id: this.lastID, role: 'student' }, JWT_SECRET, { expiresIn: '24h' });
-            res.json({ token, user: { id: this.lastID, name, email, role: 'student', coins: 0 } });
+            const userId = this.lastID;
+
+            // Sync to Firestore if enabled
+            if (firestore) {
+                firestore.collection('users').doc(userId.toString()).set({
+                    name,
+                    email,
+                    role: 'student',
+                    coins: 0,
+                    class_time: class_time || null,
+                    permissions: [],
+                    created_at: admin.firestore.FieldValue.serverTimestamp()
+                }).catch(err => console.error('Firestore sync error:', err));
+            }
+            
+            const token = jwt.sign({ id: userId, role: 'student' }, JWT_SECRET, { expiresIn: '24h' });
+            res.json({ token, user: { id: userId, name, email, role: 'student', coins: 0 } });
         });
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
@@ -148,17 +209,54 @@ app.post('/api/auth/login', (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
 
-        const permissions = JSON.parse(user.permissions || '[]');
-        const token = jwt.sign({ id: user.id, role: user.role, permissions }, JWT_SECRET, { expiresIn: '24h' });
-        res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, coins: user.coins, permissions } });
+        if (firestore) {
+            // Fetch fresh data from Firestore (coins, role, permissions)
+            firestore.collection('users').doc(user.id.toString()).get()
+                .then(doc => {
+                    const userData = doc.exists ? doc.data() : user;
+                    const permissions = userData.permissions || (typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (user.permissions || []));
+                    const coins = userData.coins !== undefined ? userData.coins : user.coins;
+                    const token = jwt.sign({ id: user.id, role: userData.role || user.role, permissions }, JWT_SECRET, { expiresIn: '24h' });
+                    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: userData.role || user.role, coins, permissions } });
+                })
+                .catch(err => {
+                    console.error('Firestore login error:', err);
+                    const permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (user.permissions || []);
+                    const token = jwt.sign({ id: user.id, role: user.role, permissions }, JWT_SECRET, { expiresIn: '24h' });
+                    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, coins: user.coins, permissions } });
+                });
+        } else {
+            const permissions = JSON.parse(user.permissions || '[]');
+            const token = jwt.sign({ id: user.id, role: user.role, permissions }, JWT_SECRET, { expiresIn: '24h' });
+            res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, coins: user.coins, permissions } });
+        }
     });
 });
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
-    db.get(`SELECT id, name, email, role, coins, permissions FROM users WHERE id = ?`, [req.user.id], (err, user) => {
+    db.get(`SELECT id, name, email, role, coins, permissions, class_time FROM users WHERE id = ?`, [req.user.id], async (err, user) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         if (!user) return res.status(404).json({ error: 'User not found' });
-        user.permissions = JSON.parse(user.permissions || '[]');
+        
+        if (firestore) {
+            try {
+                const doc = await firestore.collection('users').doc(user.id.toString()).get();
+                if (doc.exists) {
+                    const data = doc.data();
+                    user.coins = data.coins !== undefined ? data.coins : user.coins;
+                    user.role = data.role || user.role;
+                    user.permissions = data.permissions || (typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (user.permissions || []));
+                    user.class_time = data.class_time || user.class_time;
+                } else {
+                    user.permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (user.permissions || []);
+                }
+            } catch (e) {
+                console.error('Firestore me error:', e);
+                user.permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (user.permissions || []);
+            }
+        } else {
+            user.permissions = JSON.parse(user.permissions || '[]');
+        }
         res.json({ user });
     });
 });
@@ -220,7 +318,7 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
 app.get('/api/admin/admins', authenticateToken, requirePermission('manage_admins'), (req, res) => {
     db.all(`SELECT id, name, email, role, permissions FROM users WHERE role = 'admin'`, (err, rows) => {
         if (err) return res.status(500).json({ error: 'Database error' });
-        const admins = rows.map(r => ({ ...r, permissions: JSON.parse(r.permissions || '[]') }));
+        const admins = rows.map(r => ({ ...r, permissions: typeof r.permissions === 'string' ? JSON.parse(r.permissions || '[]') : (r.permissions || []) }));
         res.json({ admins });
     });
 });
@@ -238,7 +336,20 @@ app.post('/api/admin/admins', authenticateToken, requirePermission('manage_admin
         db.run(`INSERT INTO users (name, email, password, role, permissions) VALUES (?, ?, ?, 'admin', ?)`,
         [name, email, hash, permsJson], function(err) {
             if (err) return res.status(400).json({ error: 'Email already exists or database error' });
-            res.json({ message: 'Admin created successfully', id: this.lastID });
+            
+            const adminId = this.lastID;
+            if (firestore) {
+                firestore.collection('users').doc(adminId.toString()).set({
+                    name,
+                    email,
+                    role: 'admin',
+                    coins: 0,
+                    permissions: permissions || [],
+                    created_at: admin.firestore.FieldValue.serverTimestamp()
+                }).catch(err => console.error('Firestore admin create error:', err));
+            }
+            
+            res.json({ message: 'Admin created successfully', id: adminId });
         });
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
@@ -257,18 +368,30 @@ app.put('/api/admin/admins/:id', authenticateToken, requirePermission('manage_ad
             return res.status(403).json({ error: 'Cannot change email for the main super-admin' });
         }
 
+        const updateFirestore = (updatedPerms) => {
+            if (firestore) {
+                firestore.collection('users').doc(adminId.toString()).update({
+                    name,
+                    email,
+                    permissions: updatedPerms || permissions || []
+                }).catch(err => console.error('Firestore admin update error:', err));
+            }
+        };
+
         if (password && password.trim() !== '') {
             const salt = await bcrypt.genSalt(10);
             const hash = await bcrypt.hash(password, salt);
             db.run(`UPDATE users SET name = ?, email = ?, password = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
             [name, email, hash, JSON.stringify(permissions), adminId], function(err) {
                 if (err) return res.status(400).json({ error: 'Database error' });
+                updateFirestore(permissions);
                 res.json({ message: 'Admin updated successfully' });
             });
         } else {
             db.run(`UPDATE users SET name = ?, email = ?, permissions = ? WHERE id = ? AND role = 'admin'`,
             [name, email, JSON.stringify(permissions), adminId], function(err) {
                 if (err) return res.status(400).json({ error: 'Database error' });
+                updateFirestore(permissions);
                 res.json({ message: 'Admin updated successfully' });
             });
         }
@@ -295,6 +418,10 @@ app.delete('/api/admin/admins/:id', authenticateToken, requirePermission('manage
                 console.warn(`[Admin Delete] No changes made. ID ${adminId} not found or not an admin.`);
                 return res.status(404).json({ error: 'Admin not found' });
             }
+            if (firestore) {
+                firestore.collection('users').doc(adminId.toString()).delete()
+                    .catch(err => console.error('Firestore admin delete error:', err));
+            }
             console.log(`[Admin Delete] Successfully deleted admin ID: ${adminId}`);
             res.json({ message: 'Admin deleted successfully' });
         });
@@ -305,10 +432,32 @@ app.delete('/api/admin/admins/:id', authenticateToken, requirePermission('manage
 // ADMIN STUDENTS APIs
 // =======================
 
-app.get('/api/admin/students', authenticateToken, requirePermission('manage_students'), (req, res) => {
+app.get('/api/admin/students', authenticateToken, requirePermission('manage_students'), async (req, res) => {
+    if (firestore) {
+        try {
+            const snapshot = await firestore.collection('users').where('role', '==', 'student').get();
+            const students = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                students.push({
+                    id: doc.id,
+                    name: data.name,
+                    email: data.email,
+                    coins: data.coins || 0,
+                    class_time: data.class_time || null
+                });
+            });
+            // Sort by name
+            students.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            return res.json({ students });
+        } catch (err) {
+            console.error('Firestore admin students error:', err);
+        }
+    }
+
     db.all(`SELECT id, name, email, coins, class_time FROM users WHERE role = 'student' ORDER BY id DESC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Database error' });
-        res.json({ students: rows });
+        res.json({ students: rows || [] });
     });
 });
 
@@ -322,7 +471,21 @@ app.post('/api/admin/students', authenticateToken, requirePermission('manage_stu
         db.run(`INSERT INTO users (name, email, password, role, coins, class_time) VALUES (?, ?, ?, 'student', ?, ?)`, 
         [name, email, hash, parseInt(coins) || 0, class_time || null], function(err) {
             if (err) return res.status(400).json({ error: 'Email already exists or database error' });
-            res.json({ message: 'Student created successfully', id: this.lastID });
+            
+            const userId = this.lastID;
+            if (firestore) {
+                firestore.collection('users').doc(userId.toString()).set({
+                    name,
+                    email,
+                    role: 'student',
+                    coins: parseInt(coins) || 0,
+                    class_time: class_time || null,
+                    permissions: [],
+                    created_at: admin.firestore.FieldValue.serverTimestamp()
+                }).catch(err => console.error('Firestore admin student create error:', err));
+            }
+            
+            res.json({ message: 'Student created successfully', id: userId });
         });
     } catch (err) {
         res.status(500).json({ error: 'Server error parsing password' });
@@ -334,6 +497,14 @@ app.put('/api/admin/students/:id', authenticateToken, requirePermission('manage_
     const studentId = req.params.id;
     if (email) email = email.toLowerCase();
 
+    const updateFirestore = () => {
+        if (firestore) {
+            const updateData = { name, email, coins: parseInt(coins) || 0, class_time: class_time || null };
+            firestore.collection('users').doc(studentId.toString()).update(updateData)
+                .catch(err => console.error('Firestore admin student update error:', err));
+        }
+    };
+
     if (password && password.trim() !== '') {
         try {
             const salt = await bcrypt.genSalt(10);
@@ -341,6 +512,7 @@ app.put('/api/admin/students/:id', authenticateToken, requirePermission('manage_
             db.run(`UPDATE users SET name = ?, email = ?, password = ?, coins = ?, class_time = ? WHERE id = ? AND role = 'student'`,
                 [name, email, hash, parseInt(coins) || 0, class_time || null, studentId], function(err) {
                     if (err) return res.status(400).json({ error: 'Database error or email format' });
+                    updateFirestore();
                     res.json({ message: 'Student updated successfully' });
             });
         } catch (err) {
@@ -350,6 +522,7 @@ app.put('/api/admin/students/:id', authenticateToken, requirePermission('manage_
         db.run(`UPDATE users SET name = ?, email = ?, coins = ?, class_time = ? WHERE id = ? AND role = 'student'`,
             [name, email, parseInt(coins) || 0, class_time || null, studentId], function(err) {
                 if (err) return res.status(400).json({ error: 'Database error or email format' });
+                updateFirestore();
                 res.json({ message: 'Student updated successfully' });
         });
     }
@@ -366,11 +539,78 @@ app.delete('/api/admin/students/:id', authenticateToken, requirePermission('mana
                 db.run('ROLLBACK');
                 return res.status(500).json({ error: 'Database error' });
             }
+            if (firestore) {
+                firestore.collection('users').doc(studentId.toString()).delete()
+                    .catch(err => console.error('Firestore admin student delete error:', err));
+            }
             db.run('COMMIT', (commitErr) => {
                 if (commitErr) return res.status(500).json({ error: 'Error committing deletion' });
                 res.json({ message: 'Student deleted successfully' });
             });
         });
+    });
+});
+
+// =======================
+// MESSAGING APIs
+// =======================
+
+app.get('/api/admin/students/list', authenticateToken, requirePermission('manage_students'), async (req, res) => {
+    if (firestore) {
+        try {
+            const snapshot = await firestore.collection('users').where('role', '==', 'student').get();
+            const students = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                students.push({
+                    id: doc.id,
+                    name: data.name,
+                    email: data.email
+                });
+            });
+            // Sort by name
+            students.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            return res.json({ students });
+        } catch (err) {
+            console.error('Firestore students list error:', err);
+            // Fallback to SQLite if Firestore fails
+        }
+    }
+
+    db.all(`SELECT id, name, email FROM users WHERE role = 'student' ORDER BY name ASC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ students: rows || [] });
+    });
+});
+
+app.post('/api/admin/messages', authenticateToken, requirePermission('manage_students'), (req, res) => {
+    const { user_id, message } = req.body;
+    if (!user_id || !message) return res.status(400).json({ error: 'Recipient and message required' });
+
+    db.run(`INSERT INTO messages (user_id, message) VALUES (?, ?)`, [user_id, message], function(err) {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ message: 'Message sent successfully' });
+    });
+});
+
+app.get('/api/student/messages', authenticateToken, (req, res) => {
+    db.all(`SELECT id, message, is_read, created_at FROM messages WHERE user_id = ? ORDER BY id DESC`, [req.user.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ messages: rows });
+    });
+});
+
+app.get('/api/student/messages/unread-count', authenticateToken, (req, res) => {
+    db.get(`SELECT COUNT(*) as count FROM messages WHERE user_id = ? AND is_read = 0`, [req.user.id], (err, row) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ count: row.count });
+    });
+});
+
+app.put('/api/student/messages/read', authenticateToken, (req, res) => {
+    db.run(`UPDATE messages SET is_read = 1 WHERE user_id = ?`, [req.user.id], (err) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ message: 'Messages marked as read' });
     });
 });
 
@@ -472,10 +712,23 @@ app.post('/api/codes/redeem', redeemLimiter, authenticateToken, (req, res) => {
             [req.user.id, now, row.id], function(err) {
                 if (err) return res.status(500).json({ error: 'Database error' });
 
-                db.run(`UPDATE users SET coins = coins + ? WHERE id = ?`, [coinsToAdd, req.user.id], function(err) {
-                    if (err) return res.status(500).json({ error: 'Database error' });
-                    res.json({ message: `Code redeemed successfully, ${coinsToAdd} coin(s) added!`, coins_added: coinsToAdd });
-                });
+                if (firestore) {
+                    // Update coins in Firestore
+                    const userRef = firestore.collection('users').doc(req.user.id.toString());
+                    userRef.update({
+                        coins: admin.firestore.FieldValue.increment(coinsToAdd)
+                    }).then(() => {
+                        res.json({ message: `Code redeemed successfully, ${coinsToAdd} coin(s) added!`, coins_added: coinsToAdd });
+                    }).catch(err => {
+                        console.error('Firestore redeem error:', err);
+                        res.status(500).json({ error: 'Firestore sync error' });
+                    });
+                } else {
+                    db.run(`UPDATE users SET coins = coins + ? WHERE id = ?`, [coinsToAdd, req.user.id], function(err) {
+                        if (err) return res.status(500).json({ error: 'Database error' });
+                        res.json({ message: `Code redeemed successfully, ${coinsToAdd} coin(s) added!`, coins_added: coinsToAdd });
+                    });
+                }
             });
         });
     });
@@ -642,22 +895,48 @@ app.post('/api/videos/unlock', authenticateToken, (req, res) => {
     db.get(`SELECT price FROM video_prices WHERE video_path = ?`, [videoPath], (err, priceRow) => {
         const price = (priceRow && priceRow.price) !== undefined ? priceRow.price : 1;
 
-        db.get(`SELECT coins FROM users WHERE id = ?`, [req.user.id], (err, user) => {
+        db.get(`SELECT coins FROM users WHERE id = ?`, [req.user.id], async (err, user) => {
             if (err) return res.status(500).json({ error: 'Database error' });
-            if (user.coins < price) return res.status(400).json({ error: `Not enough coins. This video costs ${price} coin(s).` });
+            
+            let currentCoins = user.coins;
+            if (firestore) {
+                try {
+                    const userDoc = await firestore.collection('users').doc(req.user.id.toString()).get();
+                    if (userDoc.exists) currentCoins = userDoc.data().coins;
+                } catch (e) {
+                    console.error('Error fetching coins from Firestore:', e);
+                }
+            }
+
+            if (currentCoins < price) return res.status(400).json({ error: `Not enough coins. This video costs ${price} coin(s).` });
 
             db.get(`SELECT * FROM unlocked_videos WHERE user_id = ? AND video_path = ?`, [req.user.id, videoPath], (err, unlocked) => {
                 if (err) return res.status(500).json({ error: 'Database error' });
                 if (unlocked) return res.status(400).json({ error: 'Video already unlocked' });
 
-                db.run(`UPDATE users SET coins = coins - ? WHERE id = ?`, [price, req.user.id], function(err) {
-                    if (err) return res.status(500).json({ error: 'Database error' });
-
-                    db.run(`INSERT INTO unlocked_videos (user_id, video_path) VALUES (?, ?)`, [req.user.id, videoPath], function(err) {
-                        if (err) return res.status(500).json({ error: 'Database error' });
-                        res.json({ message: `Video unlocked successfully! ${price} coin(s) deducted.` });
+                if (firestore) {
+                    const userRef = firestore.collection('users').doc(req.user.id.toString());
+                    userRef.update({
+                        coins: admin.firestore.FieldValue.increment(-price)
+                    }).then(() => {
+                        db.run(`INSERT INTO unlocked_videos (user_id, video_path) VALUES (?, ?)`, [req.user.id, videoPath], function(err) {
+                            if (err) return res.status(500).json({ error: 'Database error' });
+                            res.json({ message: `Video unlocked successfully! ${price} coin(s) deducted.` });
+                        });
+                    }).catch(err => {
+                        console.error('Firestore unlock error:', err);
+                        res.status(500).json({ error: 'Firestore sync error' });
                     });
-                });
+                } else {
+                    db.run(`UPDATE users SET coins = coins - ? WHERE id = ?`, [price, req.user.id], function(err) {
+                        if (err) return res.status(500).json({ error: 'Database error' });
+
+                        db.run(`INSERT INTO unlocked_videos (user_id, video_path) VALUES (?, ?)`, [req.user.id, videoPath], function(err) {
+                            if (err) return res.status(500).json({ error: 'Database error' });
+                            res.json({ message: `Video unlocked successfully! ${price} coin(s) deducted.` });
+                        });
+                    });
+                }
             });
         });
     });
@@ -984,7 +1263,21 @@ app.post('/api/student/exams/:id/submit', authenticateToken, (req, res) => {
             db.run(`UPDATE student_exams SET completed_at = ?, score = ?, total_questions = ?, status = 'submitted' WHERE id = ?`,
             [nowISO, score, questions.length, studentExam.id], function(err) {
                 if (err) return res.status(500).json({ error: 'Failed to submit' });
-                res.json({ message: 'Exam submitted successfully', score, total: questions.length });
+                
+                // Insert into reports instantly
+                db.get(`SELECT name, email, class_time FROM users WHERE id = ?`, [req.user.id], (err, uRow) => {
+                    db.get(`SELECT title FROM exams WHERE id = ?`, [examId], (err, eRow) => {
+                        const examTitle = eRow ? eRow.title : 'Unknown Exam';
+                        const uName = uRow ? uRow.name : 'Unknown';
+                        const uEmail = uRow ? uRow.email : 'Unknown';
+                        const uClass = uRow ? uRow.class_time : null;
+                        
+                        db.run(`INSERT INTO exam_reports (exam_title, user_id, student_name, student_email, class_time, score, total_questions, submitted_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [examTitle, req.user.id, uName, uEmail, uClass, score, questions.length, nowISO, nowISO], () => {
+                            res.json({ message: 'Exam submitted successfully', score, total: questions.length });
+                        });
+                    });
+                });
             });
         });
     });
@@ -1001,27 +1294,10 @@ setInterval(() => {
         exams.forEach(exam => {
             db.serialize(() => {
                 db.run('BEGIN TRANSACTION');
-                
-                db.all(`
-                    SELECT se.user_id, se.score, se.total_questions, se.completed_at, u.name, u.email, u.class_time 
-                    FROM student_exams se 
-                    JOIN users u ON se.user_id = u.id 
-                    WHERE se.exam_id = ? AND se.status = 'submitted'`, [exam.id], (err, results) => {
-                    
-                    if (!err && results && results.length > 0) {
-                        const stmt = db.prepare(`INSERT INTO exam_reports (exam_title, user_id, student_name, student_email, class_time, score, total_questions, submitted_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-                        results.forEach(r => {
-                            stmt.run([exam.title, r.user_id, r.name, r.email, r.class_time, r.score, r.total_questions, r.completed_at, nowISO]);
-                        });
-                        stmt.finalize();
-                    }
-                    
-                    db.run(`UPDATE exams SET status = 'ended' WHERE id = ?`, [exam.id]);
-                    db.run(`DELETE FROM exams WHERE id = ?`, [exam.id]);
-                    
-                    db.run('COMMIT', (err) => {
-                        if (!err) console.log(`[Background] Auto-cleanup processed for exam: ${exam.title}`);
-                    });
+                db.run(`UPDATE exams SET status = 'ended' WHERE id = ?`, [exam.id]);
+                db.run(`DELETE FROM exams WHERE id = ?`, [exam.id]);
+                db.run('COMMIT', (err) => {
+                    if (!err) console.log(`[Background] Auto-cleanup processed for exam: ${exam.title}`);
                 });
             });
         });

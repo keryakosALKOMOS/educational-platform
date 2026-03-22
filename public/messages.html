@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - My Messages</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .messages-container {
+            max-width: 800px;
+            margin: 2rem auto;
+            min-height: 60vh;
+        }
+        .message-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            position: relative;
+            transition: transform 0.2s;
+            box-shadow: var(--shadow-sm);
+        }
+        .message-card.unread {
+            border-left: 4px solid var(--primary);
+            background: rgba(79, 70, 229, 0.05);
+        }
+        .message-text {
+            font-size: 1.05rem;
+            color: var(--text-main);
+            margin-bottom: 0.75rem;
+            line-height: 1.7;
+        }
+        .message-date {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 5rem 1rem;
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px dashed var(--border);
+        }
+    </style>
+</head>
+<body data-auth="guest">
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform
+            </a>
+            <div class="nav-links">
+                <a href="dashboard.html" data-i18n="nav_dashboard">Dashboard</a>
+                <a href="index.html" data-i18n="nav_home">Home</a>
+                <a href="#" data-i18n="nav_logout" class="btn btn-secondary logout-btn">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="messages-container">
+            <h2 class="mb-6" data-i18n="msg_title">📬 Your Messages</h2>
+            <div id="messagesList">
+                <div class="empty-state">Loading messages...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/i18n.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Check Auth
+        if (!window.app.token || window.app.user?.role !== 'student') {
+            window.location.href = '/login.html';
+        }
+
+        async function loadMessages() {
+            const list = document.getElementById('messagesList');
+            try {
+                const data = await window.app.apiCall('/student/messages');
+                const messages = data.messages || [];
+                
+                if (messages.length === 0) {
+                    list.innerHTML = `
+                        <div class="empty-state">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3; margin-bottom:1rem;"><path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h9"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/><path d="M19 16v6"/><path d="M16 19h6"/></svg>
+                            <p>No messages yet.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                list.innerHTML = '';
+                messages.forEach(m => {
+                    const card = document.createElement('div');
+                    card.className = `message-card ${m.is_read ? '' : 'unread'}`;
+                    const date = new Date(m.created_at).toLocaleString();
+                    
+                    card.innerHTML = `
+                        <div class="message-text">${m.message}</div>
+                        <div class="message-date">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            ${date}
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+
+                // Mark all as read since the student opened the page
+                await window.app.apiCall('/student/messages/read', 'PUT');
+                if (window.app.refreshMessageBadge) window.app.refreshMessageBadge();
+
+            } catch (err) {
+                list.innerHTML = `<div class="empty-state" style="color:var(--error)">Error loading messages: ${err.message}</div>`;
+            }
+        }
+
+        loadMessages();
+    </script>
+</body>
+</html>

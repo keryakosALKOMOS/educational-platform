@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Manage Exams</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .exam-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+        .exam-card:hover { transform: translateY(-2px); border-color: var(--primary); }
+        .exam-info h3 { margin: 0 0 0.5rem 0; color: var(--text); }
+        .exam-meta { font-size: 0.875rem; color: var(--text-muted); display: flex; gap: 1rem; }
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-active { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+        .status-ended { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .status-upcoming { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+        
+        .countdown {
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1.125rem;
+            color: var(--primary);
+            text-align: right;
+        }
+        .countdown-label { font-size: 0.75rem; color: var(--text-muted); display: block; }
+    </style>
+</head>
+<body data-auth="guest">
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform Admin
+            </a>
+            <div class="nav-links">
+                <a href="admin.html" class="btn btn-secondary">Dashboard</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-8">
+        <div class="flex items-center justify-between mb-6">
+            <h2>⏳ Live Exams Tracker</h2>
+            <a href="admin-exam-generator.html" class="btn btn-primary">➕ Create New Exam</a>
+        </div>
+
+        <div id="examsList">
+            <div style="text-align:center; padding: 3rem;">Loading exams...</div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        if (!window.app.token || window.app.user?.role !== 'admin') {
+            window.location.href = '/login.html';
+        }
+
+        let examsData = [];
+
+        async function loadExams() {
+            try {
+                const data = await window.app.apiCall('/admin/exams');
+                examsData = data.exams || [];
+                renderExams();
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        }
+
+        function renderExams() {
+            const container = document.getElementById('examsList');
+            if (examsData.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:3rem; color:var(--text-muted);">No exams found.</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            examsData.forEach(exam => {
+                const card = document.createElement('div');
+                card.className = 'exam-card';
+                card.id = `exam-${exam.id}`;
+                
+                const now = new Date();
+                const start = new Date(exam.start_time);
+                const end = new Date(exam.end_time);
+                
+                let statusClass = 'status-active';
+                let statusText = 'Active';
+                if (now < start) {
+                    statusClass = 'status-upcoming';
+                    statusText = 'Upcoming';
+                } else if (now > end) {
+                    statusClass = 'status-ended';
+                    statusText = 'Ended';
+                }
+
+                card.innerHTML = `
+                    <div class="exam-info">
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                        <h3>${exam.title}</h3>
+                        <div class="exam-meta">
+                            <span>⏱ ${exam.duration_minutes} min</span>
+                            <span>📅 ${end.toLocaleString()}</span>
+                            <span>👥 Class: ${exam.assigned_to_class_time}</span>
+                        </div>
+                    </div>
+                    <div class="countdown-container">
+                        <span class="countdown-label">${statusText === 'Upcoming' ? 'Starts in' : statusText === 'Ended' ? 'Ended' : 'Time Remaining'}</span>
+                        <div class="countdown" id="timer-${exam.id}">--:--:--</div>
+                        <button class="btn btn-sm btn-danger mt-2" onclick="deleteExam(${exam.id})" style="padding:0.25rem 0.5rem; font-size:0.7rem;">🗑 Delete</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+            
+            updateTimers();
+        }
+
+        function updateTimers() {
+            (examsData || []).forEach(exam => {
+                const display = document.getElementById(`timer-${exam.id}`);
+                if (!display) return;
+
+                const now = new Date().getTime();
+                const start = new Date(exam.start_time).getTime();
+                const end = new Date(exam.end_time).getTime();
+                
+                let target = end;
+                if (now < start) target = start;
+                
+                let diff = target - now;
+                
+                if (now > end) {
+                    display.textContent = "00:00:00";
+                    display.style.color = "var(--error)";
+                    return;
+                }
+
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const secs = Math.floor((diff % (1000 * 60)) / 1000);
+                
+                display.textContent = 
+                    (hours < 10 ? "0" + hours : hours) + ":" +
+                    (mins < 10 ? "0" + mins : mins) + ":" +
+                    (secs < 10 ? "0" + secs : secs);
+                
+                if (diff < 1000 * 60 * 5) display.style.color = "#f59e0b"; // 5 min warning
+            });
+        }
+
+        window.deleteExam = async (id) => {
+            if (!confirm('Are you sure you want to delete this exam? This will remove all questions and reports associated with it.')) return;
+            try {
+                await window.app.apiCall('/admin/exams/' + id, 'DELETE');
+                window.showNotification('Exam deleted', 'success');
+                loadExams();
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        };
+
+        setInterval(updateTimers, 1000);
+        loadExams();
+    </script>
+</body>
+</html>

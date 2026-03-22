@@ -270,8 +270,12 @@
                 container.innerHTML += `<a href="admin-students.html" class="btn btn-primary">🎓 Manage Students</a>`;
             }
             if (perms.includes('manage_exams')) {
+                container.innerHTML += `<a href="admin-exams.html" class="btn btn-primary" style="background: #ef4444; border-color: #ef4444;">${window.i18n.t('nav_live_exams')}</a>`;
                 container.innerHTML += `<a href="admin-exam-generator.html" class="btn btn-primary" style="background: #8b5cf6; border-color: #8b5cf6;">✨ Generate Exam</a>`;
                 container.innerHTML += `<a href="admin-reports.html" class="btn btn-secondary">📊 Reports</a>`;
+            }
+            if (perms.includes('manage_students') || perms.includes('manage_admins')) {
+                container.innerHTML += `<a href="admin-messages.html" class="btn btn-secondary" style="background:#10b981; border-color:#10b981; color:white;">${window.i18n.t('nav_messages')}</a>`;
             }
             if (perms.includes('manage_admins')) {
                 container.innerHTML += `<a href="admin-admins.html" class="btn btn-secondary" style="background:var(--secondary);border-color:var(--secondary);">👥 Manage Admins</a>`;

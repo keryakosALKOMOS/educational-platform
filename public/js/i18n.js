@@ -36,7 +36,10 @@ const translations = {
         'dev_desc': 'A passionate software developer specializing in building scalable web and mobile applications. Experienced in Flutter development, backend systems, cloud deployment, and DevOps practices. Focused on creating high-performance applications and reliable infrastructure that deliver seamless user experiences.',
         'dev_skill1': 'Developer',
         'dev_skill2': 'DevOps',
-        'dev_skill3': 'System Infrastructure'
+        'dev_skill3': 'System Infrastructure',
+        'nav_live_exams': '⏳ Live Exams',
+        'nav_messages': '📩 Messages',
+        'msg_title': '📬 Your Messages'
     },
     ar: {
         'nav_home': 'الرئيسية',
@@ -75,7 +78,10 @@ const translations = {
         'dev_desc': 'مطور برمجيات شغوف متخصص في بناء تطبيقات ويب وهواتف محمول قابلة للتطوير. ذو خبرة في تطوير فلاتر والأنظمة الخلفية والنشر السحابي وممارسات DevOps. أركز على إنشاء تطبيقات عالية الأداء وبنية تحتية موثوقة تقدم تجارب مستخدم سلسة.',
         'dev_skill1': 'مطور',
         'dev_skill2': 'DevOps',
-        'dev_skill3': 'بنية الأنظمة'
+        'dev_skill3': 'بنية الأنظمة',
+        'nav_live_exams': '⏳ الامتحانات الحالية',
+        'nav_messages': '📩 الرسائل',
+        'msg_title': '📬 رسائلك'
     }
 };
 

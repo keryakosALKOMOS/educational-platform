@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform - Admin Messages</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .messaging-container {
+            max-width: 800px;
+            margin: 2rem auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .form-group { margin-bottom: 1.5rem; }
+        .student-select {
+            width: 100%;
+            height: 45px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 0 1rem;
+            background: var(--surface-hover);
+        }
+        .message-box {
+            width: 100%;
+            min-height: 150px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 1rem;
+            font-family: inherit;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body data-auth="guest">
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.html" class="navbar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                EduPlatform Admin
+            </a>
+            <div class="nav-links">
+                <a href="admin.html" class="btn btn-secondary">Dashboard</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-8">
+        <div class="messaging-container">
+            <h2 class="mb-4">✉️ Send Message to Student</h2>
+            <form id="messageForm">
+                <div class="form-group">
+                    <label class="form-label">Select Student</label>
+                    <select id="studentSelect" class="student-select" required>
+                        <option value="">Loading students...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Message Content</label>
+                    <textarea id="messageText" class="message-box" placeholder="Write your message here... Students can read this but cannot reply." required></textarea>
+                </div>
+                <div class="flex justify-end">
+                    <button type="submit" id="sendBtn" class="btn btn-primary">🚀 Send Message</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        if (!window.app.token || window.app.user?.role !== 'admin') {
+            window.location.href = '/login.html';
+        }
+
+        async function loadStudents() {
+            try {
+                const data = await window.app.apiCall('/admin/students/list');
+                const select = document.getElementById('studentSelect');
+                select.innerHTML = '<option value="">-- Choose a Student --</option>';
+                (data.students || []).forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = `${s.name} (${s.email})`;
+                    select.appendChild(opt);
+                });
+
+                // Pre-select if ID is in URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const preSelectId = urlParams.get('user_id');
+                if (preSelectId) {
+                    select.value = preSelectId;
+                }
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            }
+        }
+
+        document.getElementById('messageForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const sendBtn = document.getElementById('sendBtn');
+            const studentId = document.getElementById('studentSelect').value;
+            const text = document.getElementById('messageText').value;
+
+            if (!studentId || !text) return;
+
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            try {
+                await window.app.apiCall('/admin/messages', 'POST', {
+                    user_id: parseInt(studentId),
+                    message: text
+                });
+                window.showNotification('Message sent successfully!', 'success');
+                document.getElementById('messageText').value = '';
+                document.getElementById('studentSelect').value = '';
+            } catch (err) {
+                window.showNotification(err.message, 'error');
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '🚀 Send Message';
+            }
+        });
+
+        loadStudents();
+    </script>
+</body>
+</html>

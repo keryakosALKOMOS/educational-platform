@@ -220,7 +220,7 @@
         async function loadStudents() {
             try {
                 const data = await window.app.apiCall('/admin/students');
-                allStudents = data.students;
+                allStudents = data.students || [];
                 renderStudents();
             } catch (err) {
                 window.showNotification(err.message, 'error');
@@ -234,7 +234,7 @@
             const fDay = document.getElementById('filterDay').value;
             const fHour = document.getElementById('filterHour').value;
 
-            const filtered = allStudents.filter(s => {
+            const filtered = (allStudents || []).filter(s => {
                 const ct = s.class_time || '';
                 if (fDay && !ct.includes(fDay)) return false;
                 if (fHour && !ct.includes(fHour)) return false;
@@ -256,6 +256,7 @@
                     <td><strong style="color:var(--warning)">${s.coins}</strong></td>
                     <td>${escapeHtml(s.class_time || 'Not Set')}</td>
                     <td class="action-btns">
+                        <a href="admin-messages.html?user_id=${s.id}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; background: var(--success); border-color: var(--success); color: white;">Message</a>
                         <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="openModal(${s.id})">Edit</button>
                         <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; background: var(--error); border-color: var(--error); color: white;" onclick="openDeleteModal(${s.id})">Delete</button>
                     </td>

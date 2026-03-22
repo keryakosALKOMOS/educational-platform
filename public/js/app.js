@@ -62,6 +62,7 @@ class App {
             el.textContent = this.user ? this.user.name : '';
         });
         this.updateCoinsDisplay();
+        this.updateMessagesUI();
     }
 
     updateCoinsDisplay() {
@@ -71,6 +72,48 @@ class App {
             });
         }
     }
+
+    // Messaging System logic
+    async updateMessagesUI() {
+        if (!this.user || this.user.role !== 'student') return;
+        
+        // Inject Message Icon if not present
+        const navLinks = document.querySelector('.nav-links');
+        if (navLinks && !document.getElementById('msgBtn')) {
+            const msgBtn = document.createElement('a');
+            msgBtn.id = 'msgBtn';
+            msgBtn.href = 'messages.html';
+            msgBtn.className = 'msg-btn';
+            msgBtn.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span id="msgBadge" class="msg-badge">0</span>
+            `;
+            // Insert before Logout or Settings
+            const logoutBtn = navLinks.querySelector('.logout-btn');
+            if (logoutBtn) navLinks.insertBefore(msgBtn, logoutBtn);
+            else navLinks.appendChild(msgBtn);
+        }
+
+        this.refreshMessageBadge();
+        // Periodically check for new messages (every 5 minutes)
+        if (!this._msgInterval) {
+            this._msgInterval = setInterval(() => this.refreshMessageBadge(), 1000 * 60 * 5);
+        }
+    }
+
+    async refreshMessageBadge() {
+        if (!this.user || this.user.role !== 'student') return;
+        try {
+            const { count } = await this.apiCall('/student/messages/unread-count');
+            const badge = document.getElementById('msgBadge');
+            if (badge) {
+                badge.textContent = count;
+                badge.classList.toggle('active', count > 0);
+            }
+        } catch (e) {}
+    }
+
+    // Modal removed as per user request for a dedicated page
 
     setupLogout() {
         document.querySelectorAll('.logout-btn').forEach(btn => {
