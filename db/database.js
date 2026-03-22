@@ -35,6 +35,14 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 if (err && !err.message.includes("duplicate column name")) console.error("Migration error adding push_subscription:", err);
             });
 
+            // Create Code Batches table
+            db.run(`CREATE TABLE IF NOT EXISTS code_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at DATETIME NOT NULL,
+                count INTEGER NOT NULL,
+                coins_per_code INTEGER NOT NULL DEFAULT 1
+            )`);
+
             // Normalize all existing emails to lowercase
             db.run(`UPDATE users SET email = LOWER(email)`, (err) => {
                 if (err) console.error("Migration error normalizing emails:", err);
@@ -48,8 +56,15 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 is_used BOOLEAN DEFAULT 0,
                 used_by INTEGER,
                 used_at DATETIME,
-                FOREIGN KEY (used_by) REFERENCES users (id)
+                batch_id INTEGER,
+                FOREIGN KEY (used_by) REFERENCES users (id),
+                FOREIGN KEY (batch_id) REFERENCES code_batches (id)
             )`);
+
+            // Migration: Add batch_id to codes if it doesn't exist
+            db.run(`ALTER TABLE codes ADD COLUMN batch_id INTEGER`, (err) => {
+                if (err && !err.message.includes("duplicate column name")) console.error("Migration error adding batch_id to codes:", err);
+            });
 
             // Create Unlocked Videos table
             db.run(`CREATE TABLE IF NOT EXISTS unlocked_videos (
@@ -142,13 +157,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             )`);
 
-            // Create Code Batches table
-            db.run(`CREATE TABLE IF NOT EXISTS code_batches (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at DATETIME NOT NULL,
-                count INTEGER NOT NULL,
-                coins_per_code INTEGER NOT NULL DEFAULT 1
-            )`);
 
             db.run(`ALTER TABLE messages ADD COLUMN user_id_temp TEXT`, (err) => {
                 // This is a complex migration in SQLite, but for now we just ensure it can store TEXT

@@ -4,3 +4,4 @@ db/*.sqlite
 tmp_clear.js
 test_delete.js
 assetes/
+firebase-service-account.json
