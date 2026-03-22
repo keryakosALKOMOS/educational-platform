@@ -173,7 +173,7 @@ const requirePermission = (permission) => {
 app.get('/api/debug-ai', async (req, res) => {
     try {
         const apiKey = process.env.GEMINI_API_KEY || '';
-        const genAI = new GoogleGenerativeAI(apiKey, { apiVersion: "v1" });
+        const genAI = new GoogleGenerativeAI(apiKey);
         
         let flashResult = "Untested";
         try {
@@ -187,7 +187,6 @@ app.get('/api/debug-ai', async (req, res) => {
         res.json({ 
             status: "Diagnostic Check",
             api_key_set: !!apiKey,
-            endpoint: "v1 (object forced)",
             flash_test: flashResult,
             model_list: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
         });
@@ -1099,7 +1098,7 @@ app.post('/api/admin/exams/generate', authenticateToken, requirePermission('mana
             return res.status(400).json({ error: 'Please provide a topic or upload at least one valid file with text.' });
         }
 
-                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '', { apiVersion: "v1" });
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
         const modelNames = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
         
         const prompt = `You are an expert educator.
