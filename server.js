@@ -143,12 +143,16 @@ const requirePermission = (permission) => {
                     })
                     .catch(err => {
                         console.error('Firestore permission error:', err);
-                        res.status(500).json({ error: 'Firestore access error' });
+                        res.status(500).json({ error: 'SQLite error' });
                     });
             } else {
                 // Fallback to SQLite
                 db.get(`SELECT permissions FROM users WHERE id = ?`, [req.user.id], (err, user) => {
-                    if (err || !user) return res.status(403).json({ error: 'Access Denied' });
+                    if (err) {
+                        console.error('SQLite permission error:', err);
+                        return res.status(500).json({ error: 'SQLite access error: ' + err.message });
+                    }
+                    if (!user) return res.status(403).json({ error: 'Access Denied' });
                     const perms = typeof user.permissions === 'string' ? JSON.parse(user.permissions || '[]') : (user.permissions || []);
                     if (perms.includes(permission)) {
                         next();
@@ -184,7 +188,8 @@ app.post('/api/auth/register', async (req, res) => {
                 if (err.message.includes('UNIQUE')) {
                     return res.status(400).json({ error: 'Email already exists' });
                 }
-                return res.status(500).json({ error: 'Firestore access error' });
+                console.error('SQLite register error:', err);
+                return res.status(500).json({ error: 'SQLite access error: ' + err.message });
             }
             
             const userId = this.lastID;
@@ -215,7 +220,10 @@ app.post('/api/auth/login', (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email is required' });
     email = email.toLowerCase();
     db.get(`SELECT * FROM users WHERE email = ?`, [email], async (err, user) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) {
+            console.error('SQLite login error:', err);
+            return res.status(500).json({ error: 'SQLite access error: ' + err.message });
+        }
         if (!user) return res.status(400).json({ error: 'User not found' });
 
         const validPassword = await bcrypt.compare(password, user.password);
@@ -247,7 +255,10 @@ app.post('/api/auth/login', (req, res) => {
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
     db.get(`SELECT id, name, email, role, coins, permissions, class_time FROM users WHERE id = ?`, [req.user.id], async (err, user) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) {
+            console.error('SQLite me error:', err);
+            return res.status(500).json({ error: 'SQLite access error: ' + err.message });
+        }
         if (!user) return res.status(404).json({ error: 'User not found' });
         
         if (firestore) {
@@ -287,7 +298,7 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
     app.post('/api/push/subscribe', authenticateToken, (req, res) => {
         const subscription = req.body;
         db.run(`UPDATE users SET push_subscription = ? WHERE id = ?`, [JSON.stringify(subscription), req.user.id], function(err) {
-            if (err) return res.status(500).json({ error: 'Firestore access error' });
+            if (err) return res.status(500).json({ error: 'SQLite error' });
             res.status(201).json({ message: 'Subscribed securely' });
         });
     });
@@ -329,7 +340,7 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
 
 app.get('/api/admin/admins', authenticateToken, requirePermission('manage_admins'), (req, res) => {
     db.all(`SELECT id, name, email, role, permissions FROM users WHERE role = 'admin'`, (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         const admins = rows.map(r => ({ ...r, permissions: typeof r.permissions === 'string' ? JSON.parse(r.permissions || '[]') : (r.permissions || []) }));
         res.json({ admins });
     });
@@ -375,7 +386,7 @@ app.put('/api/admin/admins/:id', authenticateToken, requirePermission('manage_ad
 
     // Protection: Prevent changing email for super-admin
     db.get(`SELECT email FROM users WHERE id = ?`, [adminId], async (err, row) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         if (row && row.email === SUPER_ADMIN_EMAIL && email !== SUPER_ADMIN_EMAIL) {
             return res.status(403).json({ error: 'Cannot change email for the main super-admin' });
         }
@@ -415,7 +426,7 @@ app.delete('/api/admin/admins/:id', authenticateToken, requirePermission('manage
     
     // Protection: Prevent deleting super-admin
     db.get(`SELECT email FROM users WHERE id = ?`, [adminId], (err, row) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         if (row && row.email === SUPER_ADMIN_EMAIL) {
             return res.status(403).json({ error: 'Cannot delete the main super-admin account' });
         }
@@ -468,7 +479,7 @@ app.get('/api/admin/students', authenticateToken, requirePermission('manage_stud
     }
 
     db.all(`SELECT id, name, email, coins, class_time FROM users WHERE role = 'student' ORDER BY id DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ students: rows || [] });
     });
 });
@@ -549,7 +560,7 @@ app.delete('/api/admin/students/:id', authenticateToken, requirePermission('mana
         db.run(`DELETE FROM users WHERE id = ? AND role = 'student'`, [studentId], function(err) {
             if (err) {
                 db.run('ROLLBACK');
-                return res.status(500).json({ error: 'Firestore access error' });
+                return res.status(500).json({ error: 'SQLite error' });
             }
             if (firestore) {
                 firestore.collection('users').doc(studentId.toString()).delete()
@@ -590,7 +601,7 @@ app.get('/api/admin/students/list', authenticateToken, requirePermission('manage
     }
 
     db.all(`SELECT id, name, email FROM users WHERE role = 'student' ORDER BY name ASC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ students: rows || [] });
     });
 });
@@ -600,28 +611,28 @@ app.post('/api/admin/messages', authenticateToken, requirePermission('manage_stu
     if (!user_id || !message) return res.status(400).json({ error: 'Recipient and message required' });
 
     db.run(`INSERT INTO messages (user_id, message) VALUES (?, ?)`, [user_id, message], function(err) {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ message: 'Message sent successfully' });
     });
 });
 
 app.get('/api/student/messages', authenticateToken, (req, res) => {
     db.all(`SELECT id, message, is_read, created_at FROM messages WHERE user_id = ? ORDER BY id DESC`, [req.user.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ messages: rows });
     });
 });
 
 app.get('/api/student/messages/unread-count', authenticateToken, (req, res) => {
     db.get(`SELECT COUNT(*) as count FROM messages WHERE user_id = ? AND is_read = 0`, [req.user.id], (err, row) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ count: row.count });
     });
 });
 
 app.put('/api/student/messages/read', authenticateToken, (req, res) => {
     db.run(`UPDATE messages SET is_read = 1 WHERE user_id = ?`, [req.user.id], (err) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ message: 'Messages marked as read' });
     });
 });
@@ -674,7 +685,7 @@ app.post('/api/codes/generate', authenticateToken, requirePermission('manage_cod
 
 app.get('/api/codes', authenticateToken, requireAdmin, (req, res) => {
     db.all(`SELECT * FROM codes ORDER BY id DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ codes: rows });
     });
 });
@@ -694,7 +705,7 @@ app.get('/api/codes/batches', authenticateToken, requirePermission('manage_codes
         GROUP BY b.id
         ORDER BY b.id DESC
     `, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ batches: rows });
     });
 });
@@ -703,7 +714,7 @@ app.get('/api/codes/batches', authenticateToken, requirePermission('manage_codes
 app.get('/api/codes/batch/:id', authenticateToken, requirePermission('manage_codes'), (req, res) => {
     const batchId = req.params.id;
     db.all(`SELECT * FROM codes WHERE batch_id = ? ORDER BY id ASC`, [batchId], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ codes: rows });
     });
 });
@@ -713,7 +724,7 @@ app.post('/api/codes/redeem', redeemLimiter, authenticateToken, (req, res) => {
     if (!code) return res.status(400).json({ error: 'Code is required' });
 
     db.get(`SELECT * FROM codes WHERE code = ?`, [code.toUpperCase()], (err, row) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         if (!row) return res.status(404).json({ error: 'Code does not exist' });
         if (row.is_used) return res.status(400).json({ error: 'Code already used' });
 
@@ -722,7 +733,7 @@ app.post('/api/codes/redeem', redeemLimiter, authenticateToken, (req, res) => {
             const now = new Date().toISOString();
             db.run(`UPDATE codes SET is_used = 1, used_by = ?, used_at = ? WHERE id = ?`,
             [req.user.id, now, row.id], function(err) {
-                if (err) return res.status(500).json({ error: 'Firestore access error' });
+                if (err) return res.status(500).json({ error: 'SQLite error' });
 
                 if (firestore) {
                     // Update coins in Firestore
@@ -737,7 +748,7 @@ app.post('/api/codes/redeem', redeemLimiter, authenticateToken, (req, res) => {
                     });
                 } else {
                     db.run(`UPDATE users SET coins = coins + ? WHERE id = ?`, [coinsToAdd, req.user.id], function(err) {
-                        if (err) return res.status(500).json({ error: 'Firestore access error' });
+                        if (err) return res.status(500).json({ error: 'SQLite error' });
                         res.json({ message: `Code redeemed successfully, ${coinsToAdd} coin(s) added!`, coins_added: coinsToAdd });
                     });
                 }
@@ -752,7 +763,7 @@ app.post('/api/codes/redeem', redeemLimiter, authenticateToken, (req, res) => {
 
 app.get('/api/admin/settings', authenticateToken, requirePermission('manage_admins'), (req, res) => {
     db.all(`SELECT key, value FROM app_settings`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         const settings = {};
         rows.forEach(r => { settings[r.key] = r.value; });
         res.json({ settings });
@@ -772,7 +783,7 @@ app.put('/api/admin/settings', authenticateToken, requirePermission('manage_admi
     db.serialize(() => {
         db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('codes_per_batch', ?)`, [codesVal.toString()]);
         db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('coins_per_code', ?)`, [coinsVal.toString()], (err) => {
-            if (err) return res.status(500).json({ error: 'Firestore access error' });
+            if (err) return res.status(500).json({ error: 'SQLite error' });
             res.json({
                 message: 'Settings updated successfully',
                 settings: { codes_per_batch: codesVal, coins_per_code: coinsVal }
@@ -800,7 +811,7 @@ app.get('/api/admin/video-prices', authenticateToken, requirePermission('manage_
     });
 
     db.all(`SELECT * FROM video_prices`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         
         const priceMap = {};
         rows.forEach(r => priceMap[r.video_path] = r.price);
@@ -824,7 +835,7 @@ app.put('/api/admin/video-prices', authenticateToken, requirePermission('manage_
             stmt.run(u.video_path, parseInt(u.price || 1));
         });
         stmt.finalize((err) => {
-            if (err) return res.status(500).json({ error: 'Firestore access error' });
+            if (err) return res.status(500).json({ error: 'SQLite error' });
             res.json({ message: 'Video prices updated successfully' });
         });
     });
@@ -836,7 +847,7 @@ app.put('/api/admin/video-prices', authenticateToken, requirePermission('manage_
 
 app.get('/api/videos/my-videos', authenticateToken, (req, res) => {
     db.all(`SELECT video_path, last_position FROM unlocked_videos WHERE user_id = ?`, [req.user.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         
         const videos = rows.map(row => {
             const parts = row.video_path.split('/');
@@ -871,7 +882,7 @@ app.get('/api/videos/:grade', authenticateToken, (req, res) => {
         const videoFiles = files.filter(file => file.endsWith('.mp4') || file.endsWith('.mkv'));
 
         db.all(`SELECT video_path, last_position FROM unlocked_videos WHERE user_id = ?`, [req.user.id], (err, unlockedRows) => {
-            if (err) return res.status(500).json({ error: 'Firestore access error' });
+            if (err) return res.status(500).json({ error: 'SQLite error' });
 
             const unlockedMap = {};
             unlockedRows.forEach(row => unlockedMap[row.video_path] = row.last_position);
@@ -908,7 +919,7 @@ app.post('/api/videos/unlock', authenticateToken, (req, res) => {
         const price = (priceRow && priceRow.price) !== undefined ? priceRow.price : 1;
 
         db.get(`SELECT coins FROM users WHERE id = ?`, [req.user.id], async (err, user) => {
-            if (err) return res.status(500).json({ error: 'Firestore access error' });
+            if (err) return res.status(500).json({ error: 'SQLite error' });
             
             let currentCoins = user.coins;
             if (firestore) {
@@ -923,7 +934,7 @@ app.post('/api/videos/unlock', authenticateToken, (req, res) => {
             if (currentCoins < price) return res.status(400).json({ error: `Not enough coins. This video costs ${price} coin(s).` });
 
             db.get(`SELECT * FROM unlocked_videos WHERE user_id = ? AND video_path = ?`, [req.user.id, videoPath], (err, unlocked) => {
-                if (err) return res.status(500).json({ error: 'Firestore access error' });
+                if (err) return res.status(500).json({ error: 'SQLite error' });
                 if (unlocked) return res.status(400).json({ error: 'Video already unlocked' });
 
                 if (firestore) {
@@ -932,7 +943,7 @@ app.post('/api/videos/unlock', authenticateToken, (req, res) => {
                         coins: admin.firestore.FieldValue.increment(-price)
                     }).then(() => {
                         db.run(`INSERT INTO unlocked_videos (user_id, video_path) VALUES (?, ?)`, [req.user.id, videoPath], function(err) {
-                            if (err) return res.status(500).json({ error: 'Firestore access error' });
+                            if (err) return res.status(500).json({ error: 'SQLite error' });
                             res.json({ message: `Video unlocked successfully! ${price} coin(s) deducted.` });
                         });
                     }).catch(err => {
@@ -941,10 +952,10 @@ app.post('/api/videos/unlock', authenticateToken, (req, res) => {
                     });
                 } else {
                     db.run(`UPDATE users SET coins = coins - ? WHERE id = ?`, [price, req.user.id], function(err) {
-                        if (err) return res.status(500).json({ error: 'Firestore access error' });
+                        if (err) return res.status(500).json({ error: 'SQLite error' });
 
                         db.run(`INSERT INTO unlocked_videos (user_id, video_path) VALUES (?, ?)`, [req.user.id, videoPath], function(err) {
-                            if (err) return res.status(500).json({ error: 'Firestore access error' });
+                            if (err) return res.status(500).json({ error: 'SQLite error' });
                             res.json({ message: `Video unlocked successfully! ${price} coin(s) deducted.` });
                         });
                     });
@@ -961,7 +972,7 @@ app.post('/api/videos/progress/:id', authenticateToken, (req, res) => {
 
     db.run(`UPDATE unlocked_videos SET last_position = ? WHERE user_id = ? AND video_path = ?`,  
     [position, req.user.id, videoPath], function(err) {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ message: 'Progress saved' });
     });
 });
@@ -1152,35 +1163,35 @@ app.post('/api/admin/exams', authenticateToken, requirePermission('manage_exams'
 
 app.get('/api/admin/exams', authenticateToken, requirePermission('manage_exams'), (req, res) => {
     db.all(`SELECT * FROM exams ORDER BY id DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ exams: rows });
     });
 });
 
 app.get('/api/admin/exams/:id/questions', authenticateToken, requirePermission('manage_exams'), (req, res) => {
     db.all(`SELECT * FROM questions WHERE exam_id = ?`, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ questions: rows });
     });
 });
 
 app.delete('/api/admin/exams/:id', authenticateToken, requirePermission('manage_exams'), (req, res) => {
     db.run(`DELETE FROM exams WHERE id = ?`, [req.params.id], function(err) {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ message: 'Exam deleted successfully' });
     });
 });
 
 app.get('/api/admin/reports', authenticateToken, requirePermission('manage_exams'), (req, res) => {
     db.all(`SELECT * FROM exam_reports ORDER BY id DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ reports: rows });
     });
 });
 
 app.delete('/api/admin/reports/:id', authenticateToken, requirePermission('manage_exams'), (req, res) => {
     db.run(`DELETE FROM exam_reports WHERE id = ?`, [req.params.id], function(err) {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         res.json({ message: 'Report deleted successfully' });
     });
 });
@@ -1201,7 +1212,7 @@ app.get('/api/student/exams', authenticateToken, (req, res) => {
         AND (assigned_to_class_time = 'all' OR assigned_to_class_time = ?)
         ORDER BY start_time ASC
     `, [nowISO, classTime], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Firestore access error' });
+        if (err) return res.status(500).json({ error: 'SQLite error' });
         
         db.all(`SELECT exam_id, status, score FROM student_exams WHERE user_id = ?`, [req.user.id], (err2, studentRows) => {
             const studentExamMap = {};
@@ -1263,7 +1274,7 @@ app.post('/api/student/exams/:id/submit', authenticateToken, (req, res) => {
         if (studentExam.status === 'submitted') return res.status(400).json({ error: 'Exam already submitted.' });
         
         db.all(`SELECT id, correct_option FROM questions WHERE exam_id = ?`, [examId], (err, questions) => {
-            if (err) return res.status(500).json({ error: 'Firestore access error' });
+            if (err) return res.status(500).json({ error: 'SQLite error' });
             
             let score = 0;
             questions.forEach(q => {
