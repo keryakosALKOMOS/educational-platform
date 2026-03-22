@@ -1071,8 +1071,8 @@ app.post('/api/admin/exams/generate', authenticateToken, requirePermission('mana
         }
 
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
+        const modelNames = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
+        
         const prompt = `You are an expert educator.
 Generate ${questionCount || 5} multiple-choice questions (MCQs) based on the following content.
 Difficulty Level: ${difficulty || 'medium'}.
@@ -1093,7 +1093,30 @@ Content:
 ${combinedText.substring(0, 30000)}
 `;
 
-        const result = await model.generateContent(prompt);
+        let result = null;
+        let lastErr = null;
+
+        for (const modelName of modelNames) {
+            try {
+                console.log(`Attempting AI generation with model: ${modelName}`);
+                const model = genAI.getGenerativeModel({ model: modelName });
+                result = await model.generateContent(prompt);
+                if (result && result.response) {
+                    console.log(`AI generation successful with model: ${modelName}`);
+                    break;
+                }
+            } catch (err) {
+                lastErr = err;
+                console.error(`AI model ${modelName} failed:`, err.message);
+                if (err.message.includes('404')) continue;
+                throw err;
+            }
+        }
+
+        if (!result || !result.response) {
+            throw lastErr || new Error("All AI models failed to generate content.");
+        }
+
         let rawResponse = result.response.text().trim();
         
         if (rawResponse.startsWith('```json')) {
@@ -1333,6 +1356,14 @@ setInterval(() => {
 
 app.use((req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Diagnostic endpoint to list available AI models
+app.get('/api/admin/debug-ai-models', authenticateToken, requireAdmin, async (req, res) => {
+    res.json({ 
+        testing_models: ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"],
+        api_key_set: !!process.env.GEMINI_API_KEY 
+    });
 });
 
 app.listen(PORT, () => {
