@@ -1,2 +1,5 @@
 [phases.setup]
-nixPkgs = ["...", "python3", "make", "gcc", "g++"]
+nixPkgs = ["python3", "make", "gcc", "g++"]
+
+[phases.install]
+cmds = ["npm cache clean --force", "npm ci"]
