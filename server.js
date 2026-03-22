@@ -143,7 +143,7 @@ const requirePermission = (permission) => {
                     })
                     .catch(err => {
                         console.error('Firestore permission error:', err);
-                        res.status(500).json({ error: 'SQLite error: ' + (err ? err.message : 'Unknown') });
+                        res.status(500).json({ error: 'Firestore error: ' + (err ? err.message : 'Unknown') });
                     });
             } else {
                 // Fallback to SQLite
@@ -204,7 +204,10 @@ app.post('/api/auth/register', async (req, res) => {
                     class_time: class_time || null,
                     permissions: [],
                     created_at: admin.firestore.FieldValue.serverTimestamp()
-                }).catch(err => console.error('Firestore sync error:', err));
+                }).catch(err => {
+                    console.error('Firestore sync error:', err);
+                    // res.status(500).json({ error: 'Firestore error: ' + err.message });
+                });
             }
             
             const token = jwt.sign({ id: userId, role: 'student' }, JWT_SECRET, { expiresIn: '24h' });
@@ -1067,8 +1070,8 @@ app.post('/api/admin/exams/generate', authenticateToken, requirePermission('mana
             return res.status(400).json({ error: 'Please provide a topic or upload at least one valid file with text.' });
         }
 
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         const prompt = `You are an expert educator.
 Generate ${questionCount || 5} multiple-choice questions (MCQs) based on the following content.
@@ -1103,7 +1106,8 @@ ${combinedText.substring(0, 30000)}
         res.json({ questions });
     } catch (err) {
         console.error('AI Generation Error:', err);
-        res.status(500).json({ error: 'Failed to generate questions. Ensure your API Key is valid and try again.' });
+        const errorMsg = err.message || 'Unknown AI error';
+        res.status(500).json({ error: `Failed to generate questions: ${errorMsg}. Ensure your GEMINI_API_KEY is valid and try again.` });
     }
 });
 
