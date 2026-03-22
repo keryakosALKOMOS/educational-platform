@@ -1071,7 +1071,7 @@ app.post('/api/admin/exams/generate', authenticateToken, requirePermission('mana
         }
 
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
         const prompt = `You are an expert educator.
 Generate ${questionCount || 5} multiple-choice questions (MCQs) based on the following content.
