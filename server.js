@@ -172,23 +172,26 @@ const requirePermission = (permission) => {
 // =======================
 app.get('/api/debug-ai', async (req, res) => {
     try {
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '', "v1");
-        let modelsList = [];
+        const apiKey = process.env.GEMINI_API_KEY || '';
+        const genAI = new GoogleGenerativeAI(apiKey, "v1");
+        const availableMethods = Object.keys(genAI);
+        
+        let flashResult = "Untested";
         try {
-            const listModelsRes = await genAI.listModels();
-            if (listModelsRes && listModelsRes.models) {
-                modelsList = listModelsRes.models.map(m => m.name);
-            }
-        } catch (listErr) {
-            modelsList = ["ListModels failed: " + listErr.message];
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const count = await model.countTokens("Test");
+            flashResult = `Success: ${count.totalTokens} tokens counted.`;
+        } catch (err) {
+            flashResult = `Failed: ${err.message}`;
         }
 
         res.json({ 
             status: "Diagnostic Check",
-            api_key_set: !!process.env.GEMINI_API_KEY,
-            endpoint: "v1 (explicit)",
-            discovered_models: modelsList,
-            suggested_test_list: ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-pro"]
+            api_key_set: !!apiKey,
+            endpoint: "v1 (forced)",
+            genAI_methods: availableMethods,
+            flash_test: flashResult,
+            model_list: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
         });
     } catch (err) {
         res.json({ error: err.message, api_key_set: !!process.env.GEMINI_API_KEY });
