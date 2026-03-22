@@ -168,6 +168,34 @@ const requirePermission = (permission) => {
 };
 
 // =======================
+// DIAGNOSTIC APIs (PUBLIC)
+// =======================
+app.get('/api/debug-ai', async (req, res) => {
+    try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '', "v1");
+        let modelsList = [];
+        try {
+            const listModelsRes = await genAI.listModels();
+            if (listModelsRes && listModelsRes.models) {
+                modelsList = listModelsRes.models.map(m => m.name);
+            }
+        } catch (listErr) {
+            modelsList = ["ListModels failed: " + listErr.message];
+        }
+
+        res.json({ 
+            status: "Diagnostic Check",
+            api_key_set: !!process.env.GEMINI_API_KEY,
+            endpoint: "v1 (explicit)",
+            discovered_models: modelsList,
+            suggested_test_list: ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-pro"]
+        });
+    } catch (err) {
+        res.json({ error: err.message, api_key_set: !!process.env.GEMINI_API_KEY });
+    }
+});
+
+// =======================
 // AUTHENTICATION APIs
 // =======================
 
@@ -292,23 +320,23 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
     res.json({ message: 'Logged out successfully' });
 });
 
+// Secure push notification endpoints
+app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+    const subscription = req.body;
+    db.run(`UPDATE users SET push_subscription = ? WHERE id = ?`, [JSON.stringify(subscription), req.user.id], function(err) {
+        if (err) return res.status(500).json({ error: 'SQLite error: ' + (err ? err.message : 'Unknown') });
+        res.status(201).json({ message: 'Subscribed securely' });
+    });
+});
+
+app.get('/api/push/public-key', (req, res) => {
+    res.json({ publicKey: vapidKeys.publicKey });
+});
+
 app.put('/api/auth/profile', authenticateToken, async (req, res) => {
     let { name, email, password, class_time } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
     email = email.toLowerCase();
-
-    // Endpoints for push notifications
-    app.post('/api/push/subscribe', authenticateToken, (req, res) => {
-        const subscription = req.body;
-        db.run(`UPDATE users SET push_subscription = ? WHERE id = ?`, [JSON.stringify(subscription), req.user.id], function(err) {
-            if (err) return res.status(500).json({ error: 'SQLite error: ' + (err ? err.message : 'Unknown') });
-            res.status(201).json({ message: 'Subscribed securely' });
-        });
-    });
-
-    app.get('/api/push/public-key', (req, res) => {
-        res.json({ publicKey: vapidKeys.publicKey });
-    });
 
     if (password && password.trim() !== '') {
         try {
@@ -1070,7 +1098,7 @@ app.post('/api/admin/exams/generate', authenticateToken, requirePermission('mana
             return res.status(400).json({ error: 'Please provide a topic or upload at least one valid file with text.' });
         }
 
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '', "v1");
         const modelNames = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
         
         const prompt = `You are an expert educator.
@@ -1354,16 +1382,9 @@ setInterval(() => {
     });
 }, 5 * 60 * 1000);
 
+
 app.use((req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Diagnostic endpoint to list available AI models
-app.get('/api/admin/debug-ai-models', authenticateToken, requireAdmin, async (req, res) => {
-    res.json({ 
-        testing_models: ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"],
-        api_key_set: !!process.env.GEMINI_API_KEY 
-    });
 });
 
 app.listen(PORT, () => {
