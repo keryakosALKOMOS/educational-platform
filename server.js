@@ -173,25 +173,37 @@ const requirePermission = (permission) => {
 app.get('/api/debug-ai', async (req, res) => {
     try {
         const apiKey = process.env.GEMINI_API_KEY || '';
-        const genAI = new GoogleGenerativeAI(apiKey);
         
-        let flashResult = "Untested";
-        try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const count = await model.countTokens("Test");
-            flashResult = `Success: ${count.totalTokens} tokens counted.`;
-        } catch (err) {
-            flashResult = `Failed: ${err.message}`;
+        let models = [];
+        let rawError = null;
+        let fetchStatus = null;
+        
+        if (apiKey) {
+            try {
+                // Node 18+ has native fetch
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+                fetchStatus = response.status;
+                if (!response.ok) {
+                    rawError = await response.text();
+                } else {
+                    const data = await response.json();
+                    models = data.models ? data.models.map(m => m.name) : [];
+                }
+            } catch (e) {
+                rawError = e.message;
+            }
         }
 
         res.json({ 
-            status: "Diagnostic Check",
+            status: "Diagnostic Check (Raw HTTP)",
             api_key_set: !!apiKey,
-            flash_test: flashResult,
-            model_list: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+            key_preview: apiKey ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` : 'none',
+            http_status: fetchStatus,
+            available_models: models,
+            raw_error: rawError
         });
     } catch (err) {
-        res.json({ error: err.message, api_key_set: !!process.env.GEMINI_API_KEY });
+        res.json({ error: err.message });
     }
 });
 
