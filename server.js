@@ -1124,7 +1124,10 @@ ${combinedText.substring(0, 30000)}
         let result = null;
         try {
             console.log(`Attempting AI generation with model: gemini-1.5-flash`);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = genAI.getGenerativeModel(
+                { model: "gemini-1.5-flash" },
+                { apiVersion: "v1beta" }
+            );
             result = await model.generateContent(prompt);
         } catch (err) {
             console.error(`AI model gemini-1.5-flash failed:`, err.message);
