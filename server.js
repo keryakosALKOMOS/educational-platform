@@ -1122,27 +1122,17 @@ ${combinedText.substring(0, 30000)}
 `;
 
         let result = null;
-        let lastErr = null;
-
-        for (const modelName of modelNames) {
-            try {
-                console.log(`Attempting AI generation with model: ${modelName}`);
-                const model = genAI.getGenerativeModel({ model: modelName });
-                result = await model.generateContent(prompt);
-                if (result && result.response) {
-                    console.log(`AI generation successful with model: ${modelName}`);
-                    break;
-                }
-            } catch (err) {
-                lastErr = err;
-                console.error(`AI model ${modelName} failed:`, err.message);
-                if (err.message.includes('404')) continue;
-                throw err;
-            }
+        try {
+            console.log(`Attempting AI generation with model: gemini-1.5-flash`);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            result = await model.generateContent(prompt);
+        } catch (err) {
+            console.error(`AI model gemini-1.5-flash failed:`, err.message);
+            throw err;
         }
 
         if (!result || !result.response) {
-            throw lastErr || new Error("All AI models failed to generate content.");
+            throw new Error("AI model failed to generate content.");
         }
 
         let rawResponse = result.response.text().trim();
